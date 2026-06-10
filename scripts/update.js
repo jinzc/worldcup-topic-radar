@@ -9,13 +9,156 @@ const OUT_PATH = path.join(OUT_DIR, 'worldcup.json');
 const FALLBACK_PATH = path.join(ROOT, 'config', 'fallback-sample.json');
 
 const USER_AGENT =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36 WorldCupTopicRadar/1.0';
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36 WorldCupTopicRadar/2.0';
 
-const FETCH_TIMEOUT = Number(process.env.FETCH_TIMEOUT || 9000);
+const FETCH_TIMEOUT = Number(process.env.FETCH_TIMEOUT || 10000);
 const MAX_CONCURRENCY = Number(process.env.MAX_CONCURRENCY || 5);
 
-const config = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf-8'));
-const RSSHUB_BASE = (process.env[config.rsshubBaseEnv] || config.defaultRsshubBase || 'https://rsshub.app').replace(/\/$/, '');
+let config = {};
+try {
+  config = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf-8'));
+} catch {
+  config = {};
+}
+
+const RSSHUB_BASE = (process.env.RSSHUB_BASE || config.defaultRsshubBase || 'https://rsshub.app').replace(/\/$/, '');
+
+const DEFAULT_PLATFORMS = [
+  { id: 'weibo', name: '微博', emoji: '🔥', color: '#f04438' },
+  { id: 'baidu', name: '百度', emoji: '🔎', color: '#2563eb' },
+  { id: 'bilibili', name: 'B站', emoji: '📺', color: '#00a1d6' },
+  { id: 'zhihu', name: '知乎', emoji: '💬', color: '#1677ff' },
+  { id: 'douyin', name: '抖音', emoji: '🎵', color: '#111827' },
+  { id: 'hupu', name: '虎扑', emoji: '🏀', color: '#c81e1e' },
+  { id: 'dongqiudi', name: '懂球帝', emoji: '⚽', color: '#16a34a' },
+  { id: 'xiaohongshu', name: '小红书', emoji: '📕', color: '#ff2442' },
+  { id: 'migu', name: '咪咕', emoji: '📡', color: '#7c3aed' },
+  { id: 'netease', name: '网易', emoji: '📰', color: '#c20c0c' }
+];
+
+const PLATFORMS = DEFAULT_PLATFORMS.map((p) => {
+  const old = (config.platforms || []).find((x) => x.id === p.id);
+  return { ...p, ...(old || {}) };
+});
+
+const WORLD_CUP_TERMS = [
+  '世界杯',
+  '2026世界杯',
+  '2026 世界杯',
+  '美加墨世界杯',
+  '美加墨',
+  '世界杯大数据',
+  '世界杯赛程',
+  '世界杯门票',
+  '世界杯球票',
+  '世界杯揭幕战',
+  '世界杯小组赛',
+  '世界杯分组',
+  '世界杯抽签',
+  '世界杯预选赛',
+  '世预赛',
+  '亚洲区预选赛',
+  '亚洲预选赛',
+  '18强赛',
+  '36强赛',
+  '国足',
+  '中国男足',
+  '中国队',
+  'FIFA',
+  '国际足联',
+  '大力神杯',
+  '梅西世界杯',
+  'C罗世界杯',
+  '姆巴佩世界杯',
+  '世界杯转播',
+  '世界杯直播',
+  '咪咕世界杯',
+  '央视世界杯',
+  '抖音世界杯'
+];
+
+const FOOTBALL_CONTEXT_TERMS = [
+  '足球',
+  '男足',
+  '国足',
+  '中国男足',
+  '国家队',
+  '阿根廷',
+  '巴西',
+  '法国',
+  '英格兰',
+  '葡萄牙',
+  '德国',
+  '西班牙',
+  '荷兰',
+  '意大利',
+  '克罗地亚',
+  '日本',
+  '韩国',
+  '伊朗',
+  '沙特',
+  '卡塔尔',
+  '美国',
+  '墨西哥',
+  '加拿大',
+  '梅西',
+  'C罗',
+  '姆巴佩',
+  '哈兰德',
+  '贝林厄姆',
+  '亚马尔'
+];
+
+const ACTION_TERMS = [
+  '晋级',
+  '出线',
+  '淘汰',
+  '夺冠',
+  '抽签',
+  '分组',
+  '赛程',
+  '揭幕战',
+  '小组赛',
+  '决赛',
+  '半决赛',
+  '预选赛',
+  '门票',
+  '球票',
+  '开票',
+  '官宣',
+  '发布',
+  '直播',
+  '转播',
+  '名单',
+  '集训',
+  '伤缺',
+  '复出',
+  '入境',
+  '签证',
+  '球场',
+  '举办城市',
+  '吉祥物',
+  '主题曲'
+];
+
+const EXCLUDE_TERMS = [
+  '篮球世界杯',
+  '男篮世界杯',
+  '女篮世界杯',
+  '排球世界杯',
+  '电竞世界杯',
+  '王者荣耀世界杯',
+  '乒乓球世界杯',
+  '跳水世界杯',
+  '短道世界杯',
+  '花滑世界杯',
+  '世界杯游戏',
+  '游戏世界杯',
+  '世界杯冠军皮肤',
+  '世界杯模拟器',
+  '世界杯广告招商',
+  '世界杯素材模板'
+];
 
 function formatCNDate(date = new Date()) {
   const parts = new Intl.DateTimeFormat('zh-CN', {
@@ -42,13 +185,13 @@ function hash(text) {
   return crypto.createHash('sha1').update(String(text)).digest('hex').slice(0, 12);
 }
 
+function uniq(arr) {
+  return [...new Set(arr.filter(Boolean))];
+}
+
 function toArray(value) {
   if (value === undefined || value === null) return [];
   return Array.isArray(value) ? value : [value];
-}
-
-function uniq(arr) {
-  return [...new Set(arr.filter(Boolean))];
 }
 
 function flatten(arr) {
@@ -88,7 +231,7 @@ function cleanTitle(text = '') {
 function normalizeKey(text = '') {
   return cleanTitle(text)
     .toLowerCase()
-    .replace(/[\s\-—_·:：|｜,，。.!！?？#【】\[\]()（）《》"“”'‘’]/g, '');
+    .replace(/[\s\-—_·:：|｜,，。.!！?？#【】\[\]()（）《》"“”'‘’/\\]/g, '');
 }
 
 function includesAny(text, words = []) {
@@ -101,46 +244,27 @@ function matchWords(text, words = []) {
   return words.filter((word) => low.includes(String(word).toLowerCase()));
 }
 
-function extractTags(text) {
-  const terms = uniq([
-    ...(config.keywords.mustIncludeAny || []),
-    ...(config.keywords.contextTerms || []),
-    ...(config.keywords.strongSignals || [])
-  ]);
+function isWorldCupRelated(rawText) {
+  const text = String(rawText || '');
+  if (!text.trim()) return false;
+  if (includesAny(text, EXCLUDE_TERMS)) return false;
 
-  const tags = [];
+  if (includesAny(text, WORLD_CUP_TERMS)) return true;
 
-  for (const term of terms) {
-    if (String(text).toLowerCase().includes(String(term).toLowerCase())) {
-      tags.push(term);
-    }
-  }
+  const hasFootball = includesAny(text, FOOTBALL_CONTEXT_TERMS);
+  const hasAction = includesAny(text, ACTION_TERMS);
+  const hasQualifier = text.includes('世预赛') || text.includes('预选赛') || text.includes('出线') || text.includes('晋级');
 
-  const hashTags = [...String(text).matchAll(/#([^#\s]{2,40})#/g)].map((m) => m[1]);
-
-  return uniq([...tags, ...hashTags]).slice(0, 12);
+  return hasFootball && (hasAction || hasQualifier);
 }
 
-function isWorldCupRelated(item) {
-  const text = `${item.title || ''} ${item.summary || ''} ${item.description || ''}`;
-  if (!text.trim()) return false;
-
-  if (includesAny(text, config.keywords.excludeAny || [])) return false;
-
-  const direct = matchWords(text, config.keywords.mustIncludeAny || []);
-  const strong = matchWords(text, config.keywords.strongSignals || []);
-
-  if (direct.length > 0) return true;
-  if (strong.length > 0) return true;
-
-  if (
-    (text.includes('预选赛') || text.includes('世预赛')) &&
-    (text.includes('国足') || text.includes('中国男足') || text.includes('亚洲') || text.includes('足球'))
-  ) {
-    return true;
+function extractTags(text) {
+  const tags = [];
+  for (const term of [...WORLD_CUP_TERMS, ...FOOTBALL_CONTEXT_TERMS, ...ACTION_TERMS]) {
+    if (String(text).toLowerCase().includes(String(term).toLowerCase())) tags.push(term);
   }
-
-  return false;
+  const hashTags = [...String(text).matchAll(/#([^#\s]{2,40})#/g)].map((m) => m[1]);
+  return uniq([...tags, ...hashTags]).slice(0, 12);
 }
 
 async function fetchText(url, options = {}) {
@@ -154,18 +278,23 @@ async function fetchText(url, options = {}) {
         'user-agent': USER_AGENT,
         'accept': options.accept || 'text/html,application/xhtml+xml,application/xml;q=0.9,application/rss+xml;q=0.8,application/json;q=0.7,*/*;q=0.5',
         'accept-language': 'zh-CN,zh;q=0.9,en;q=0.5',
-        'referer': options.referer || new URL(url).origin + '/',
+        'referer': options.referer || safeOrigin(url),
         ...(options.headers || {})
       }
     });
 
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status}`);
-    }
-
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.text();
   } finally {
     clearTimeout(timer);
+  }
+}
+
+function safeOrigin(url) {
+  try {
+    return new URL(url).origin + '/';
+  } catch {
+    return 'https://www.baidu.com/';
   }
 }
 
@@ -174,21 +303,22 @@ async function fetchJson(url, options = {}) {
     ...options,
     accept: 'application/json,text/plain,*/*'
   });
-
   return JSON.parse(text);
 }
 
 function makeItem(raw, source, platform, index = 0) {
   const title = cleanTitle(raw.title || raw.query || raw.desc || raw.name || raw.word || '');
   const summary = cleanTitle(raw.summary || raw.description || raw.desc || raw.content || '');
-
   if (!title || title.length < 2) return null;
 
-  const link = raw.url || raw.link || raw.scheme || raw.arcurl || raw.jump_url || raw.pc_url || '';
-  const hot = Number(raw.hot || raw.hotScore || raw.heat || raw.score || raw.play || raw.view || 0) || 0;
+  const combined = `${title} ${summary}`;
+  if (!isWorldCupRelated(combined)) return null;
+
+  const url = raw.url || raw.link || raw.scheme || raw.arcurl || raw.jump_url || raw.pc_url || '';
+  const hot = Number(raw.hot || raw.hotScore || raw.heat || raw.score || raw.play || raw.view || raw.comment || 0) || 0;
 
   return {
-    id: hash(`${platform.id}:${source.id}:${normalizeKey(title)}:${link}`),
+    id: hash(`${platform.id}:${source.id}:${normalizeKey(title)}:${url}`),
     platformId: platform.id,
     platformName: platform.name,
     platformEmoji: platform.emoji,
@@ -197,21 +327,19 @@ function makeItem(raw, source, platform, index = 0) {
     sourceType: source.type,
     title,
     summary: summary && summary !== title ? summary : '',
-    url: link,
+    url,
     rank: raw.rank || raw.index || index + 1,
     hot,
     weight: Number(source.weight || 50),
-    tags: extractTags(`${title} ${summary}`),
+    tags: extractTags(combined),
     capturedAt: new Date().toISOString()
   };
 }
 
 async function fetchWeiboHot(source, platform) {
   const json = await fetchJson(source.url, { referer: 'https://m.weibo.cn/' });
-  const cards = toArray(json?.data?.cards);
   const rows = [];
-
-  for (const card of cards) {
+  for (const card of toArray(json?.data?.cards)) {
     rows.push(...toArray(card?.card_group));
   }
 
@@ -232,9 +360,7 @@ async function fetchBaiduTop(source, platform) {
     rows.push(...toArray(card?.content));
   }
 
-  if (rows.length === 0 && Array.isArray(json?.data?.list)) {
-    rows.push(...json.data.list);
-  }
+  if (Array.isArray(json?.data?.list)) rows.push(...json.data.list);
 
   return rows.map((row, i) => makeItem({
     title: row.query || row.word || row.title,
@@ -246,22 +372,29 @@ async function fetchBaiduTop(source, platform) {
 }
 
 async function fetchBilibiliSearch(source, platform) {
-  const keyword = source.keyword || '世界杯';
-  const url = `https://api.bilibili.com/x/web-interface/search/type?search_type=video&keyword=${encodeURIComponent(keyword)}&order=totalrank&page=1&page_size=40`;
+  const keywords = source.keywords || ['世界杯', '美加墨世界杯', '国足 世预赛'];
+  const all = [];
 
-  const json = await fetchJson(url, {
-    referer: `https://search.bilibili.com/all?keyword=${encodeURIComponent(keyword)}`
-  });
+  for (const keyword of keywords) {
+    try {
+      const url = `https://api.bilibili.com/x/web-interface/search/type?search_type=video&keyword=${encodeURIComponent(keyword)}&order=totalrank&page=1&page_size=30`;
+      const json = await fetchJson(url, {
+        referer: `https://search.bilibili.com/all?keyword=${encodeURIComponent(keyword)}`
+      });
+      const rows = toArray(json?.data?.result);
 
-  const rows = toArray(json?.data?.result);
+      all.push(...rows.map((row, i) => makeItem({
+        title: row.title,
+        summary: row.description || row.tag || row.author,
+        url: row.arcurl || (row.bvid ? `https://www.bilibili.com/video/${row.bvid}` : ''),
+        hot: row.play || row.video_review || 0,
+        rank: i + 1
+      }, source, platform, i)).filter(Boolean));
+    } catch {}
+    await sleep(120);
+  }
 
-  return rows.map((row, i) => makeItem({
-    title: row.title,
-    summary: row.description || row.tag || row.author,
-    url: row.arcurl || (row.bvid ? `https://www.bilibili.com/video/${row.bvid}` : ''),
-    hot: row.play || row.video_review || 0,
-    rank: i + 1
-  }, source, platform, i)).filter(Boolean);
+  return all;
 }
 
 async function fetchZhihuHot(source, platform) {
@@ -270,7 +403,6 @@ async function fetchZhihuHot(source, platform) {
 
   return rows.map((row, i) => {
     const target = row.target || row;
-
     return makeItem({
       title: target.title || row.title,
       summary: target.excerpt || row.detail_text || row.description,
@@ -281,34 +413,86 @@ async function fetchZhihuHot(source, platform) {
   }).filter(Boolean);
 }
 
-function parseRssItems(xml) {
-  const items = [];
+async function fetchHtmlPage(source, platform) {
+  const html = await fetchText(source.url, { referer: source.referer || source.url });
+  const candidates = extractCandidatesFromHtml(html, source.url);
 
-  const itemBlocks = [...String(xml).matchAll(/<item[\s\S]*?<\/item>/gi)].map((m) => m[0]);
-  const entryBlocks = [...String(xml).matchAll(/<entry[\s\S]*?<\/entry>/gi)].map((m) => m[0]);
+  return candidates.map((row, i) => makeItem(row, source, platform, i)).filter(Boolean);
+}
 
-  for (const block of [...itemBlocks, ...entryBlocks]) {
-    const title = getXmlValue(block, 'title');
-    const summary =
-      getXmlValue(block, 'description') ||
-      getXmlValue(block, 'summary') ||
-      getXmlValue(block, 'content');
+function extractCandidatesFromHtml(html, baseUrl) {
+  const rows = [];
+  const seen = new Set();
 
-    let link = getXmlValue(block, 'link');
+  function add(title, url = '', summary = '') {
+    title = cleanTitle(title);
+    summary = cleanTitle(summary);
+    if (!title || title.length < 4 || title.length > 120) return;
+    if (!isWorldCupRelated(`${title} ${summary}`)) return;
 
-    const hrefMatch = block.match(/<link[^>]+href=["']([^"']+)["'][^>]*>/i);
-    if (hrefMatch) {
-      link = hrefMatch[1];
+    const key = normalizeKey(title);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+
+    let finalUrl = url || '';
+    if (finalUrl && !finalUrl.startsWith('http')) {
+      try {
+        finalUrl = new URL(finalUrl, baseUrl).toString();
+      } catch {}
     }
 
-    items.push({
-      title,
-      summary,
-      url: link
-    });
+    rows.push({ title, summary, url: finalUrl, rank: rows.length + 1 });
   }
 
-  return items;
+  for (const match of html.matchAll(/<a\b[^>]*?href=["']?([^"'\s>]+)["']?[^>]*>([\s\S]*?)<\/a>/gi)) {
+    add(match[2], match[1]);
+  }
+
+  for (const match of html.matchAll(/<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>/gi)) {
+    add(match[1], baseUrl);
+  }
+
+  for (const match of html.matchAll(/<title[^>]*>([\s\S]*?)<\/title>/gi)) {
+    add(match[1], baseUrl);
+  }
+
+  const quoted = html.match(/["'`]([^"'`]{4,120}(世界杯|世预赛|国足|中国男足|美加墨|FIFA|国际足联)[^"'`]{0,80})["'`]/gi) || [];
+  for (const q of quoted.slice(0, 300)) {
+    add(q.replace(/^["'`]|["'`]$/g, ''), baseUrl);
+  }
+
+  const plain = stripHtml(html);
+  const sentences = plain.split(/[。！？!?；;\n\r]/).map((s) => s.trim()).filter(Boolean);
+  for (const s of sentences.slice(0, 500)) {
+    if (s.length >= 6 && s.length <= 80) add(s, baseUrl);
+  }
+
+  return rows.slice(0, 150);
+}
+
+async function fetchRss(source, platform) {
+  const url = source.url || `${RSSHUB_BASE}${source.path}`;
+  const xml = await fetchText(url, {
+    referer: source.referer || RSSHUB_BASE + '/',
+    accept: 'application/rss+xml,application/xml,text/xml,text/html,*/*'
+  });
+
+  const rows = [];
+  const blocks = [
+    ...String(xml).matchAll(/<item[\s\S]*?<\/item>/gi),
+    ...String(xml).matchAll(/<entry[\s\S]*?<\/entry>/gi)
+  ].map((m) => m[0]);
+
+  for (const block of blocks) {
+    const title = getXmlValue(block, 'title');
+    const summary = getXmlValue(block, 'description') || getXmlValue(block, 'summary') || getXmlValue(block, 'content');
+    let link = getXmlValue(block, 'link');
+    const hrefMatch = block.match(/<link[^>]+href=["']([^"']+)["'][^>]*>/i);
+    if (hrefMatch) link = hrefMatch[1];
+    rows.push({ title, summary, url: link });
+  }
+
+  return rows.map((row, i) => makeItem(row, source, platform, i)).filter(Boolean);
 }
 
 function getXmlValue(block, tag) {
@@ -317,81 +501,333 @@ function getXmlValue(block, tag) {
   return match ? cleanTitle(match[1]) : '';
 }
 
-async function fetchRsshub(source, platform) {
-  const url = `${RSSHUB_BASE}${source.path}`;
-  const xml = await fetchText(url, {
-    referer: RSSHUB_BASE + '/',
-    accept: 'application/rss+xml,application/xml,text/xml,text/html,*/*'
-  });
+async function fetchBaiduSearch(source, platform) {
+  const query = source.query || `site:${source.site} 世界杯`;
+  const url = `https://www.baidu.com/s?wd=${encodeURIComponent(query)}`;
+  const html = await fetchText(url, { referer: 'https://www.baidu.com/' });
+  const candidates = extractCandidatesFromHtml(html, url);
 
-  const rows = parseRssItems(xml);
-
-  return rows.map((row, i) => makeItem({
-    title: row.title,
-    summary: row.summary,
-    url: row.url,
+  return candidates.map((row, i) => makeItem({
+    ...row,
+    url: row.url || url,
     rank: i + 1
   }, source, platform, i)).filter(Boolean);
 }
 
-async function fetchHtmlList(source, platform) {
-  const html = await fetchText(source.url, { referer: source.url });
-  const anchors = [...html.matchAll(/<a\b[^>]*?href=["']?([^"'\s>]+)["']?[^>]*>([\s\S]*?)<\/a>/gi)];
+async function fetchNewsHotTopics(source, platform) {
+  const base = source.base || 'https://jinzc.github.io/news-hot-topics/';
+  const candidates = [
+    'data/hot.json',
+    'data/latest.json',
+    'data/rank.json',
+    'data/topics.json',
+    'hot.json',
+    'hot-data.json',
+    'data.json',
+    'api/hot.json',
+    'public/data/hot.json'
+  ];
 
-  const seen = new Set();
-  const items = [];
+  const all = [];
 
-  for (const match of anchors) {
-    const rawHref = match[1] || '';
-    const title = cleanTitle(match[2] || '');
-
-    if (!title || title.length < 4) continue;
-
-    const key = normalizeKey(title);
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-
-    let href = rawHref;
-
-    if (href && !href.startsWith('http')) {
-      try {
-        href = new URL(href, source.url).toString();
-      } catch {}
-    }
-
-    items.push(makeItem({
-      title,
-      url: href,
-      rank: items.length + 1
-    }, source, platform, items.length));
-
-    if (items.length >= 120) break;
+  for (const file of candidates) {
+    try {
+      const url = new URL(file, base).toString();
+      const json = await fetchJson(url, { referer: base });
+      const rows = flattenUnknownJson(json);
+      all.push(...rows);
+    } catch {}
   }
 
-  return items.filter(Boolean);
+  try {
+    const html = await fetchText(base, { referer: base });
+    const scriptLinks = [...html.matchAll(/<script[^>]+src=["']([^"']+)["']/gi)].map((m) => new URL(m[1], base).toString());
+    for (const jsUrl of scriptLinks.slice(0, 8)) {
+      try {
+        const js = await fetchText(jsUrl, { referer: base });
+        const rows = extractCandidatesFromHtml(js, base);
+        all.push(...rows);
+      } catch {}
+    }
+  } catch {}
+
+  return all.map((row, i) => {
+    const title = row.title || row.name || row.word || row.query || row.desc || '';
+    const platformText = `${row.platform || row.platformName || row.source || row.sourceName || ''}`;
+    const shouldKeepPlatform =
+      !platformText ||
+      platformText.includes(platform.name) ||
+      platformText.toLowerCase().includes(platform.id.toLowerCase()) ||
+      source.allowCrossPlatform;
+
+    if (!shouldKeepPlatform) return null;
+
+    return makeItem({
+      title,
+      summary: row.summary || row.description || row.desc || '',
+      url: row.url || row.link || '',
+      hot: row.hot || row.heat || row.score || 0,
+      rank: row.rank || row.index || i + 1
+    }, source, platform, i);
+  }).filter(Boolean);
 }
+
+function flattenUnknownJson(json) {
+  const out = [];
+
+  function walk(value, context = {}) {
+    if (!value) return;
+
+    if (Array.isArray(value)) {
+      for (const item of value) walk(item, context);
+      return;
+    }
+
+    if (typeof value === 'object') {
+      const title = value.title || value.name || value.word || value.query || value.desc || value.keyword;
+      if (title) {
+        out.push({
+          ...context,
+          ...value,
+          title
+        });
+      }
+
+      const nextContext = {
+        platform: value.platform || value.platformName || value.name || context.platform,
+        source: value.source || value.sourceName || context.source
+      };
+
+      for (const key of Object.keys(value)) {
+        if (typeof value[key] === 'object') walk(value[key], nextContext);
+      }
+    }
+  }
+
+  walk(json);
+  return out;
+}
+
+const PLATFORM_SOURCES = {
+  weibo: [
+    {
+      id: 'weibo-hot-mobile',
+      name: '微博热搜',
+      type: 'weiboHot',
+      url: 'https://m.weibo.cn/api/container/getIndex?containerid=106003type%3D25%26t%3D3%26disable_hot%3D1%26filter_type%3Drealtimehot',
+      weight: 90
+    },
+    {
+      id: 'news-hot-topics-weibo',
+      name: '资讯热榜微博补充',
+      type: 'newsHotTopics',
+      base: 'https://jinzc.github.io/news-hot-topics/',
+      weight: 75
+    },
+    {
+      id: 'rsshub-weibo-search',
+      name: 'RSSHub 微博世界杯搜索',
+      type: 'rss',
+      path: '/weibo/search/hot',
+      weight: 60
+    }
+  ],
+
+  baidu: [
+    {
+      id: 'baidu-worldcup-bigdata',
+      name: '百度世界杯大数据',
+      type: 'htmlPage',
+      url: 'https://seop-landing.baidu.com/seop-landing/worldcup_bigdata/hotlist',
+      weight: 100
+    },
+    {
+      id: 'baidu-realtime',
+      name: '百度热搜',
+      type: 'baiduTop',
+      url: 'https://top.baidu.com/api/board?platform=wise&tab=realtime',
+      weight: 80
+    },
+    {
+      id: 'news-hot-topics-baidu',
+      name: '资讯热榜百度补充',
+      type: 'newsHotTopics',
+      base: 'https://jinzc.github.io/news-hot-topics/',
+      weight: 75
+    }
+  ],
+
+  bilibili: [
+    {
+      id: 'bilibili-worldcup-search',
+      name: 'B站世界杯搜索',
+      type: 'bilibiliSearch',
+      keywords: ['世界杯', '美加墨世界杯', '国足 世预赛', '梅西 世界杯', 'FIFA 世界杯'],
+      weight: 85
+    },
+    {
+      id: 'news-hot-topics-bilibili',
+      name: '资讯热榜B站补充',
+      type: 'newsHotTopics',
+      base: 'https://jinzc.github.io/news-hot-topics/',
+      weight: 70
+    }
+  ],
+
+  zhihu: [
+    {
+      id: 'zhihu-hot',
+      name: '知乎热榜',
+      type: 'zhihuHot',
+      url: 'https://www.zhihu.com/api/v3/feed/topstory/hot-lists/total?limit=100&desktop=true',
+      weight: 85
+    },
+    {
+      id: 'news-hot-topics-zhihu',
+      name: '资讯热榜知乎补充',
+      type: 'newsHotTopics',
+      base: 'https://jinzc.github.io/news-hot-topics/',
+      weight: 75
+    },
+    {
+      id: 'baidu-search-zhihu',
+      name: '百度站内搜索知乎',
+      type: 'baiduSearch',
+      site: 'zhihu.com',
+      query: 'site:zhihu.com 世界杯 OR 世预赛 OR 国足',
+      weight: 55
+    }
+  ],
+
+  douyin: [
+    {
+      id: 'news-hot-topics-douyin',
+      name: '资讯热榜抖音补充',
+      type: 'newsHotTopics',
+      base: 'https://jinzc.github.io/news-hot-topics/',
+      weight: 85
+    },
+    {
+      id: 'baidu-search-douyin',
+      name: '百度站内搜索抖音',
+      type: 'baiduSearch',
+      site: 'douyin.com',
+      query: 'site:douyin.com 世界杯 OR 世预赛 OR 国足',
+      weight: 55
+    }
+  ],
+
+  hupu: [
+    {
+      id: 'hupu-soccer',
+      name: '虎扑足球',
+      type: 'htmlPage',
+      url: 'https://soccer.hupu.com/',
+      weight: 100
+    },
+    {
+      id: 'hupu-bbs-soccer',
+      name: '虎扑足球话题区',
+      type: 'htmlPage',
+      url: 'https://bbs.hupu.com/all-soccer',
+      weight: 85
+    },
+    {
+      id: 'baidu-search-hupu',
+      name: '百度站内搜索虎扑',
+      type: 'baiduSearch',
+      site: 'hupu.com',
+      query: 'site:hupu.com 世界杯 OR 世预赛 OR 国足',
+      weight: 55
+    }
+  ],
+
+  dongqiudi: [
+    {
+      id: 'dongqiudi-home',
+      name: '懂球帝首页',
+      type: 'htmlPage',
+      url: 'https://www.dongqiudi.com/',
+      weight: 90
+    },
+    {
+      id: 'baidu-search-dongqiudi',
+      name: '百度站内搜索懂球帝',
+      type: 'baiduSearch',
+      site: 'dongqiudi.com',
+      query: 'site:dongqiudi.com 世界杯 OR 世预赛 OR 国足 OR FIFA',
+      weight: 60
+    }
+  ],
+
+  xiaohongshu: [
+    {
+      id: 'baidu-search-xiaohongshu',
+      name: '百度站内搜索小红书',
+      type: 'baiduSearch',
+      site: 'xiaohongshu.com',
+      query: 'site:xiaohongshu.com 世界杯 OR 美加墨世界杯 OR 国足',
+      weight: 70
+    }
+  ],
+
+  migu: [
+    {
+      id: 'migu-worldcup-page',
+      name: '咪咕世界杯专题页',
+      type: 'htmlPage',
+      url: 'https://www.miguvideo.com/p/home/7a04ba680afd4b49a31913c5b36e4557',
+      weight: 95
+    },
+    {
+      id: 'migu-home',
+      name: '咪咕视频首页',
+      type: 'htmlPage',
+      url: 'https://www.miguvideo.com/',
+      weight: 85
+    },
+    {
+      id: 'baidu-search-migu',
+      name: '百度站内搜索咪咕',
+      type: 'baiduSearch',
+      site: 'miguvideo.com',
+      query: 'site:miguvideo.com 世界杯 OR 美加墨世界杯 OR 咪咕世界杯',
+      weight: 65
+    }
+  ],
+
+  netease: [
+    {
+      id: 'netease-sports',
+      name: '网易体育',
+      type: 'htmlPage',
+      url: 'https://sports.163.com/',
+      weight: 85
+    },
+    {
+      id: 'netease-worldcup-search',
+      name: '百度站内搜索网易',
+      type: 'baiduSearch',
+      site: '163.com',
+      query: 'site:163.com 世界杯 OR 美加墨世界杯 OR 世预赛 OR 国足',
+      weight: 70
+    }
+  ]
+};
 
 async function fetchSource(source, platform) {
   try {
     let items = [];
 
-    if (source.type === 'weiboHot') {
-      items = await fetchWeiboHot(source, platform);
-    } else if (source.type === 'baiduTop') {
-      items = await fetchBaiduTop(source, platform);
-    } else if (source.type === 'bilibiliSearch') {
-      items = await fetchBilibiliSearch(source, platform);
-    } else if (source.type === 'zhihuHot') {
-      items = await fetchZhihuHot(source, platform);
-    } else if (source.type === 'rsshub') {
-      items = await fetchRsshub(source, platform);
-    } else if (source.type === 'htmlList') {
-      items = await fetchHtmlList(source, platform);
-    } else {
-      throw new Error(`Unknown source type: ${source.type}`);
-    }
-
-    const filtered = items.filter(isWorldCupRelated);
+    if (source.type === 'weiboHot') items = await fetchWeiboHot(source, platform);
+    else if (source.type === 'baiduTop') items = await fetchBaiduTop(source, platform);
+    else if (source.type === 'bilibiliSearch') items = await fetchBilibiliSearch(source, platform);
+    else if (source.type === 'zhihuHot') items = await fetchZhihuHot(source, platform);
+    else if (source.type === 'htmlPage') items = await fetchHtmlPage(source, platform);
+    else if (source.type === 'rss') items = await fetchRss(source, platform);
+    else if (source.type === 'baiduSearch') items = await fetchBaiduSearch(source, platform);
+    else if (source.type === 'newsHotTopics') items = await fetchNewsHotTopics(source, platform);
+    else throw new Error(`Unknown source type: ${source.type}`);
 
     return {
       ok: true,
@@ -399,8 +835,8 @@ async function fetchSource(source, platform) {
       sourceName: source.name,
       platformId: platform.id,
       total: items.length,
-      matched: filtered.length,
-      items: filtered
+      matched: items.length,
+      items
     };
   } catch (error) {
     return {
@@ -428,10 +864,7 @@ async function mapLimit(list, limit, fn) {
     const clean = () => executing.delete(p);
     p.then(clean).catch(clean);
 
-    if (executing.size >= limit) {
-      await Promise.race(executing);
-    }
-
+    if (executing.size >= limit) await Promise.race(executing);
     await sleep(80);
   }
 
@@ -442,9 +875,9 @@ function scoreItem(item) {
   const rankScore = item.rank ? Math.max(0, 80 - Number(item.rank)) : 25;
   const hotScore = item.hot ? Math.min(80, Math.log10(Number(item.hot) + 1) * 14) : 0;
   const tagScore = Math.min(30, (item.tags || []).length * 4);
-  const strongScore = matchWords(`${item.title} ${item.summary}`, config.keywords.strongSignals || []).length * 8;
+  const sourceScore = item.weight || 50;
 
-  return (item.weight || 50) + rankScore + hotScore + tagScore + strongScore;
+  return sourceScore + rankScore + hotScore + tagScore;
 }
 
 function mergeItems(items) {
@@ -452,7 +885,6 @@ function mergeItems(items) {
 
   for (const item of items) {
     const key = normalizeKey(item.title);
-
     if (!key || key.length < 2) continue;
 
     const current = map.get(key);
@@ -469,7 +901,6 @@ function mergeItems(items) {
           }
         ],
         sourceCount: 1,
-        sampleTitles: [item.title],
         score: scoreItem(item)
       });
     } else {
@@ -482,34 +913,46 @@ function mergeItems(items) {
 
       current.sourceCount = uniq(current.sources.map((s) => s.id)).length;
       current.hot = Math.max(Number(current.hot || 0), Number(item.hot || 0));
-      current.weight = Math.max(Number(current.weight || 0), Number(item.weight || 0));
       current.tags = uniq([...current.tags, ...item.tags]).slice(0, 12);
       current.score += scoreItem(item) * 0.45;
 
       if (!current.summary && item.summary) current.summary = item.summary;
       if (!current.url && item.url) current.url = item.url;
-
-      current.sampleTitles = uniq([...current.sampleTitles, item.title]).slice(0, config.sampleLimitPerItem || 2);
     }
   }
 
   return [...map.values()]
     .map((item) => ({
       ...item,
-      score: Math.round(item.score)
+      score: Math.round(item.score),
+      sources: uniqBy(item.sources, (s) => `${s.id}:${s.rank}:${s.url}`).slice(0, 5)
     }))
     .sort((a, b) => b.score - a.score)
     .slice(0, config.maxItemsPerPlatform || 80);
 }
 
+function uniqBy(arr, fn) {
+  const seen = new Set();
+  const out = [];
+
+  for (const item of arr) {
+    const key = fn(item);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+  }
+
+  return out;
+}
+
 async function run() {
   await fs.mkdir(OUT_DIR, { recursive: true });
 
-  const startedAt = new Date().toISOString();
   const tasks = [];
 
-  for (const platform of config.platforms) {
-    for (const source of platform.sources) {
+  for (const platform of PLATFORMS) {
+    const sources = PLATFORM_SOURCES[platform.id] || [];
+    for (const source of sources) {
       tasks.push({ platform, source });
     }
   }
@@ -520,7 +963,7 @@ async function run() {
 
   const platforms = [];
 
-  for (const platform of config.platforms) {
+  for (const platform of PLATFORMS) {
     const relatedResults = results.filter((r) => r.platformId === platform.id);
     const rawItems = flatten(relatedResults.map((r) => r.items));
     const merged = mergeItems(rawItems);
@@ -531,7 +974,7 @@ async function run() {
       emoji: platform.emoji,
       color: platform.color,
       count: merged.length,
-      sourceCount: platform.sources.length,
+      sourceCount: relatedResults.length,
       availableSourceCount: relatedResults.filter((r) => r.ok).length,
       rawMatchedCount: rawItems.length,
       items: merged,
@@ -544,8 +987,8 @@ async function run() {
   const payload = {
     generatedAt: new Date().toISOString(),
     generatedAtCN: formatCNDate(),
-    title: config.title,
-    description: config.description,
+    title: config.title || '世界杯话题雷达',
+    description: config.description || '聚合微博、百度、B站、知乎、抖音、虎扑、懂球帝、小红书、咪咕、网易等平台的世界杯相关话题。',
     rsshubBase: RSSHUB_BASE,
     sourceSummary: {
       totalSources: tasks.length,
@@ -564,14 +1007,12 @@ async function run() {
         sourceName: r.sourceName,
         error: r.error
       })),
-    isFallback: false,
-    startedAt
+    isFallback: false
   };
 
   if (totalItems === 0) {
     try {
       const fallback = JSON.parse(await fs.readFile(FALLBACK_PATH, 'utf-8'));
-
       fallback.generatedAt = new Date().toISOString();
       fallback.generatedAtCN = formatCNDate();
       fallback.rsshubBase = RSSHUB_BASE;
@@ -593,6 +1034,10 @@ async function run() {
 
   console.log(`World Cup topic data updated: ${OUT_PATH}`);
   console.log(`Sources ok: ${payload.sourceSummary.okSources}/${payload.sourceSummary.totalSources}; final items: ${payload.sourceSummary.finalItems}`);
+
+  for (const p of platforms) {
+    console.log(`${p.name}: ${p.count} items, ${p.availableSourceCount}/${p.sourceCount} sources ok`);
+  }
 }
 
 run()
