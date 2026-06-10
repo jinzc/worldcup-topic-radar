@@ -1,0 +1,19 @@
+{
+  "name": "worldcup-topic-radar",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "世界杯相关话题自动聚合榜单，按微博、百度、B站、知乎、抖音、虎扑、懂球帝、小红书、咪咕、网易等平台分别展示。",
+  "scripts": {
+    "update": "node scripts/update.js",
+    "serve": "npx http-server public -p 8080"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0",
+    "dayjs": "^1.11.13",
+    "fast-xml-parser": "^4.5.1"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
