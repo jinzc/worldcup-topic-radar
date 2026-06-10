@@ -1,0 +1,138 @@
+{
+  "title": "世界杯话题雷达",
+  "description": "自动聚合国内平台关于世界杯、世预赛、国足、FIFA 等相关话题，每个平台单独展示，用于内容运营选题参考。",
+  "refreshCronNote": "GitHub Actions 默认每小时更新一次。",
+  "maxItemsPerPlatform": 80,
+  "sampleLimitPerItem": 2,
+  "rsshubBaseEnv": "RSSHUB_BASE",
+  "defaultRsshubBase": "https://rsshub.app",
+  "keywords": {
+    "mustIncludeAny": [
+      "世界杯", "2026世界杯", "2026 世界杯", "美加墨世界杯", "美加墨", "FIFA", "国际足联", "世预赛", "世界杯预选赛", "预选赛", "亚洲区预选赛", "十八强赛", "18强赛", "国足", "中国男足", "中国队出线", "世界杯抽签", "世界杯赛程", "世界杯门票", "世界杯扩军", "世界杯分组", "世界杯亚洲区", "世界杯亚洲区预选赛"
+    ],
+    "contextTerms": [
+      "梅西", "C罗", "姆巴佩", "哈兰德", "贝林厄姆", "内马尔", "维尼修斯", "亚马尔", "孙兴慜", "三笘薰", "久保建英", "武磊", "张玉宁", "王大雷", "伊万科维奇", "阿根廷", "法国", "巴西", "德国", "英格兰", "西班牙", "葡萄牙", "意大利", "日本", "韩国", "沙特", "澳大利亚", "卡塔尔", "伊朗", "乌兹别克斯坦", "印度尼西亚", "泰国", "新加坡", "朝鲜", "美国", "加拿大", "墨西哥", "主办国", "小组赛", "淘汰赛", "附加赛", "出线", "晋级", "淘汰", "抽签", "赛程", "名额", "积分榜", "首发", "阵容", "伤病", "转会", "直播", "解说", "门票", "球衣", "吉祥物", "官方用球"
+    ],
+    "excludeAny": [
+      "世界杯小姐", "吃鸡世界杯", "电竞世界杯", "王者荣耀世界杯", "和平精英世界杯", "篮球世界杯", "女篮世界杯", "排球世界杯", "乒乓球世界杯", "短道速滑世界杯", "滑雪世界杯", "游泳世界杯", "棋牌世界杯", "机器人大赛", "世界杯酒店", "世界杯啤酒促销", "世界杯中奖", "彩票网站", "赌球", "博彩", "赌球盘口", "外围", "赔率", "买球", "投注", "竞猜赚钱", "开户链接", "福利群"
+    ],
+    "strongSignals": [
+      "国足", "中国男足", "世预赛", "世界杯预选赛", "亚洲区预选赛", "18强赛", "十八强赛", "FIFA", "国际足联", "美加墨世界杯", "2026世界杯", "世界杯抽签", "世界杯赛程", "世界杯门票", "世界杯分组", "世界杯扩军"
+    ]
+  },
+  "platforms": [
+    {
+      "id": "weibo",
+      "name": "微博",
+      "emoji": "🔥",
+      "color": "#ef4444",
+      "sources": [
+        { "id": "weibo-mobile-hot", "name": "微博移动端热搜", "type": "weiboHot", "url": "https://m.weibo.cn/api/container/getIndex?containerid=106003type%3D25%26t%3D3%26disable_hot%3D1%26filter_type%3Drealtimehot", "weight": 100 },
+        { "id": "rsshub-weibo-hot", "name": "RSSHub 微博热搜", "type": "rsshub", "path": "/weibo/search/hot", "weight": 80 },
+        { "id": "rsshub-weibo-worldcup", "name": "RSSHub 微博关键词：世界杯", "type": "rsshub", "path": "/weibo/keyword/%E4%B8%96%E7%95%8C%E6%9D%AF", "weight": 90 },
+        { "id": "rsshub-weibo-qualifier", "name": "RSSHub 微博关键词：世预赛", "type": "rsshub", "path": "/weibo/keyword/%E4%B8%96%E9%A2%84%E8%B5%9B", "weight": 80 }
+      ]
+    },
+    {
+      "id": "baidu",
+      "name": "百度",
+      "emoji": "🔎",
+      "color": "#2563eb",
+      "sources": [
+        { "id": "baidu-top-realtime", "name": "百度热搜实时榜", "type": "baiduTop", "url": "https://top.baidu.com/api/board?platform=pc&tab=realtime", "weight": 90 },
+        { "id": "rsshub-baidu-top", "name": "RSSHub 百度热搜", "type": "rsshub", "path": "/baidu/top/realtime", "weight": 80 },
+        { "id": "rsshub-baidu-search-worldcup", "name": "RSSHub 百度搜索：世界杯", "type": "rsshub", "path": "/baidu/search/%E4%B8%96%E7%95%8C%E6%9D%AF", "weight": 75 },
+        { "id": "rsshub-baidu-search-guozu", "name": "RSSHub 百度搜索：国足 世预赛", "type": "rsshub", "path": "/baidu/search/%E5%9B%BD%E8%B6%B3%20%E4%B8%96%E9%A2%84%E8%B5%9B", "weight": 75 }
+      ]
+    },
+    {
+      "id": "bilibili",
+      "name": "B站",
+      "emoji": "📺",
+      "color": "#06b6d4",
+      "sources": [
+        { "id": "bili-search-worldcup", "name": "B站搜索：世界杯", "type": "bilibiliSearch", "keyword": "世界杯", "weight": 95 },
+        { "id": "bili-search-guozu", "name": "B站搜索：国足 世预赛", "type": "bilibiliSearch", "keyword": "国足 世预赛", "weight": 90 },
+        { "id": "bili-search-fifa", "name": "B站搜索：FIFA 世界杯", "type": "bilibiliSearch", "keyword": "FIFA 世界杯", "weight": 80 },
+        { "id": "rsshub-baidu-search-bili", "name": "百度搜索补充：B站世界杯", "type": "rsshub", "path": "/baidu/search/site%3Abilibili.com%20%E4%B8%96%E7%95%8C%E6%9D%AF", "weight": 55 }
+      ]
+    },
+    {
+      "id": "zhihu",
+      "name": "知乎",
+      "emoji": "💬",
+      "color": "#0f766e",
+      "sources": [
+        { "id": "zhihu-hot", "name": "知乎热榜", "type": "zhihuHot", "url": "https://api.zhihu.com/topstory/hot-lists/total?limit=50&desktop=true", "weight": 85 },
+        { "id": "rsshub-zhihu-hot", "name": "RSSHub 知乎热榜", "type": "rsshub", "path": "/zhihu/hot", "weight": 75 },
+        { "id": "rsshub-baidu-search-zhihu", "name": "百度搜索补充：知乎世界杯", "type": "rsshub", "path": "/baidu/search/site%3Azhihu.com%20%E4%B8%96%E7%95%8C%E6%9D%AF", "weight": 60 }
+      ]
+    },
+    {
+      "id": "douyin",
+      "name": "抖音",
+      "emoji": "🎵",
+      "color": "#111827",
+      "sources": [
+        { "id": "rsshub-douyin-hot", "name": "RSSHub 抖音热榜", "type": "rsshub", "path": "/douyin/hot", "weight": 80 },
+        { "id": "rsshub-baidu-search-douyin", "name": "百度搜索补充：抖音世界杯", "type": "rsshub", "path": "/baidu/search/site%3Adouyin.com%20%E4%B8%96%E7%95%8C%E6%9D%AF", "weight": 65 },
+        { "id": "rsshub-baidu-search-iesdouyin", "name": "百度搜索补充：抖音短链世界杯", "type": "rsshub", "path": "/baidu/search/site%3Aiesdouyin.com%20%E4%B8%96%E7%95%8C%E6%9D%AF", "weight": 50 }
+      ]
+    },
+    {
+      "id": "hupu",
+      "name": "虎扑",
+      "emoji": "🏀",
+      "color": "#f97316",
+      "sources": [
+        { "id": "rsshub-hupu-soccer", "name": "RSSHub 虎扑足球热帖", "type": "rsshub", "path": "/hupu/all/soccer", "weight": 90 },
+        { "id": "rsshub-hupu-topic-daily", "name": "RSSHub 虎扑每日话题", "type": "rsshub", "path": "/hupu/all/topic-daily", "weight": 70 },
+        { "id": "rsshub-baidu-search-hupu", "name": "百度搜索补充：虎扑世界杯", "type": "rsshub", "path": "/baidu/search/site%3Ahupu.com%20%E4%B8%96%E7%95%8C%E6%9D%AF", "weight": 65 },
+        { "id": "rsshub-baidu-search-hupu-guozu", "name": "百度搜索补充：虎扑国足世预赛", "type": "rsshub", "path": "/baidu/search/site%3Ahupu.com%20%E5%9B%BD%E8%B6%B3%20%E4%B8%96%E9%A2%84%E8%B5%9B", "weight": 65 }
+      ]
+    },
+    {
+      "id": "dongqiudi",
+      "name": "懂球帝",
+      "emoji": "⚽",
+      "color": "#16a34a",
+      "sources": [
+        { "id": "dongqiudi-home", "name": "懂球帝首页/新闻页", "type": "htmlList", "url": "https://www.dongqiudi.com/", "selectors": ["a"], "weight": 85 },
+        { "id": "rsshub-baidu-search-dqd", "name": "百度搜索补充：懂球帝世界杯", "type": "rsshub", "path": "/baidu/search/site%3Adongqiudi.com%20%E4%B8%96%E7%95%8C%E6%9D%AF", "weight": 70 },
+        { "id": "rsshub-baidu-search-dqd-guozu", "name": "百度搜索补充：懂球帝国足世预赛", "type": "rsshub", "path": "/baidu/search/site%3Adongqiudi.com%20%E5%9B%BD%E8%B6%B3%20%E4%B8%96%E9%A2%84%E8%B5%9B", "weight": 70 }
+      ]
+    },
+    {
+      "id": "xiaohongshu",
+      "name": "小红书",
+      "emoji": "📕",
+      "color": "#dc2626",
+      "sources": [
+        { "id": "rsshub-baidu-search-xhs", "name": "百度搜索补充：小红书世界杯", "type": "rsshub", "path": "/baidu/search/site%3Axiaohongshu.com%20%E4%B8%96%E7%95%8C%E6%9D%AF", "weight": 75 },
+        { "id": "rsshub-baidu-search-xhs-guozu", "name": "百度搜索补充：小红书国足世预赛", "type": "rsshub", "path": "/baidu/search/site%3Axiaohongshu.com%20%E5%9B%BD%E8%B6%B3%20%E4%B8%96%E9%A2%84%E8%B5%9B", "weight": 70 }
+      ]
+    },
+    {
+      "id": "migu",
+      "name": "咪咕",
+      "emoji": "📡",
+      "color": "#7c3aed",
+      "sources": [
+        { "id": "migu-sports-home", "name": "咪咕体育首页", "type": "htmlList", "url": "https://www.miguvideo.com/", "selectors": ["a"], "weight": 65 },
+        { "id": "rsshub-baidu-search-migu", "name": "百度搜索补充：咪咕世界杯", "type": "rsshub", "path": "/baidu/search/site%3Amiguvideo.com%20%E4%B8%96%E7%95%8C%E6%9D%AF", "weight": 75 },
+        { "id": "rsshub-baidu-search-migu-sports", "name": "百度搜索补充：咪咕体育世界杯", "type": "rsshub", "path": "/baidu/search/site%3Amigu.cn%20%E4%B8%96%E7%95%8C%E6%9D%AF", "weight": 65 }
+      ]
+    },
+    {
+      "id": "netease",
+      "name": "网易",
+      "emoji": "📰",
+      "color": "#b91c1c",
+      "sources": [
+        { "id": "netease-sports", "name": "网易体育首页", "type": "htmlList", "url": "https://sports.163.com/", "selectors": ["a"], "weight": 75 },
+        { "id": "rsshub-baidu-search-netease", "name": "百度搜索补充：网易世界杯", "type": "rsshub", "path": "/baidu/search/site%3A163.com%20%E4%B8%96%E7%95%8C%E6%9D%AF", "weight": 70 },
+        { "id": "rsshub-baidu-search-netease-guozu", "name": "百度搜索补充：网易国足世预赛", "type": "rsshub", "path": "/baidu/search/site%3A163.com%20%E5%9B%BD%E8%B6%B3%20%E4%B8%96%E9%A2%84%E8%B5%9B", "weight": 70 }
+      ]
+    }
+  ]
+}
