@@ -637,7 +637,7 @@ const PLATFORM_SOURCES = {
     {
       id: 'baidu-worldcup-bigdata',
       name: '百度世界杯大数据',
-      type: 'htmlPage',
+      type: 'baiduWorldcupBigData',
       url: 'https://seop-landing.baidu.com/seop-landing/worldcup_bigdata/hotlist',
       weight: 100
     },
@@ -814,14 +814,254 @@ const PLATFORM_SOURCES = {
     }
   ]
 };
+function extractAssetUrls(html, baseUrl) {
+  const urls = [];
 
+  for (const match of String(html).matchAll(/<(script|link)[^>]+(?:src|href)=["']([^"']+)["'][^>]*>/gi)) {
+    const raw = match[2];
+    if (!raw) continue;
+
+    try {
+      const full = new URL(raw, baseUrl).toString();
+      if (
+        full.includes('.js') ||
+        full.includes('worldcup') ||
+        full.includes('bigdata') ||
+        full.includes('hotlist') ||
+        full.includes('static')
+      ) {
+        urls.push(full);
+      }
+    } catch {}
+  }
+
+  return uniq(urls).slice(0, 20);
+}
+
+function extractApiUrls(text, baseUrl) {
+  const urls = [];
+
+  const patterns = [
+    /https?:\/\/[^"'`\s<>]+/gi,
+    /["'`](\/[^"'`<>]*(?:api|ajax|worldcup|bigdata|hotlist|rank|list|data)[^"'`<>]*)["'`]/gi
+  ];
+
+  for (const pattern of patterns) {
+    for (const match of String(text).matchAll(pattern)) {
+      const raw = match[1] || match[0];
+      if (!raw) continue;
+
+      try {
+        const full = new URL(raw, baseUrl).toString();
+
+        if (
+          full.includes('worldcup') ||
+          full.includes('bigdata') ||
+          full.includes('hotlist') ||
+          full.includes('rank') ||
+          full.includes('list') ||
+          full.includes('data')
+        ) {
+          urls.push(full);
+        }
+      } catch {}
+    }
+  }
+
+  return uniq(urls).slice(0, 30);
+}
+
+function extractCandidatesFromLooseText(text, baseUrl) {
+  const rows = [];
+  const seen = new Set();
+
+  function add(title, summary = '', url = baseUrl) {
+    title = cleanTitle(title);
+    summary = cleanTitle(summary);
+
+    if (!title || title.length < 4 || title.length > 120) return;
+    if (!isWorldCupRelated(`${title} ${summary}`)) return;
+
+    const key = normalizeKey(title);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+
+    rows.push({
+      title,
+      summary,
+      url,
+      rank: rows.length + 1
+    });
+  }
+
+  const source = String(text || '');
+
+  // 1. 抽 JSON 里的 title/query/word/name/desc
+  const jsonTitlePatterns = [
+    /"(?:title|query|word|name|desc|keyword|text)"\s*:\s*"([^"]{4,120})"/gi,
+    /'(?:title|query|word|name|desc|keyword|text)'\s*:\s*'([^']{4,120})'/gi
+  ];
+
+  for (const pattern of jsonTitlePatterns) {
+    for (const match of source.matchAll(pattern)) {
+      add(match[1]);
+    }
+  }
+
+  // 2. 抽包含世界杯关键词的普通字符串
+  const quoted = source.match(/["'`]([^"'`]{4,120}(世界杯|世预赛|国足|中国男足|美加墨|FIFA|国际足联)[^"'`]{0,80})["'`]/gi) || [];
+  for (const q of quoted.slice(0, 300)) {
+    add(q.replace(/^["'`]|["'`]$/g, ''));
+  }
+
+  // 3. 抽页面纯文本里的短句
+  const plain = stripHtml(source);
+  const sentences = plain
+    .split(/[。！？!?；;\n\r]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  for (const s of sentences.slice(0, 600)) {
+    if (s.length >= 6 && s.length <= 100) {
+      add(s);
+    }
+  }
+
+  return rows.slice(0, 150);
+}
+
+async function tryFetchJsonOrText(url, source, platform) {
+  try {
+    const text = await fetchText(url, {
+      referer: 'https://seop-landing.baidu.com/',
+      accept: 'application/json,text/plain,text/html,*/*'
+    });
+
+    let rows = [];
+
+    try {
+      const json = JSON.parse(text);
+      rows = flattenUnknownJson(json).map((row, i) => {
+        return makeItem({
+          title: row.title || row.name || row.word || row.query || row.desc || row.keyword || '',
+          summary: row.summary || row.description || row.desc || '',
+          url: row.url || row.link || url,
+          hot: row.hot || row.heat || row.score || row.index || 0,
+          rank: row.rank || row.index || i + 1
+        }, source, platform, i);
+      }).filter(Boolean);
+    } catch {
+      rows = extractCandidatesFromLooseText(text, url).map((row, i) => {
+        return makeItem(row, source, platform, i);
+      }).filter(Boolean);
+    }
+
+    return rows;
+  } catch {
+    return [];
+  }
+}
+
+async function fetchBaiduWorldcupBigData(source, platform) {
+  const all = [];
+  const baseUrl = source.url;
+
+  // 1. 直接抓百度世界杯大数据页面
+  let html = '';
+  try {
+    html = await fetchText(baseUrl, {
+      referer: 'https://www.baidu.com/',
+      accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+    });
+
+    all.push(
+      ...extractCandidatesFromHtml(html, baseUrl)
+        .map((row, i) => makeItem(row, source, platform, i))
+        .filter(Boolean)
+    );
+
+    all.push(
+      ...extractCandidatesFromLooseText(html, baseUrl)
+        .map((row, i) => makeItem(row, source, platform, i))
+        .filter(Boolean)
+    );
+  } catch {}
+
+  // 2. 抓页面引用的 JS / 静态资源，因为榜单很可能在前端脚本或接口里
+  const assetUrls = extractAssetUrls(html, baseUrl);
+
+  for (const assetUrl of assetUrls.slice(0, 12)) {
+    try {
+      const jsText = await fetchText(assetUrl, {
+        referer: baseUrl,
+        accept: 'application/javascript,text/javascript,text/plain,*/*'
+      });
+
+      all.push(
+        ...extractCandidatesFromLooseText(jsText, assetUrl)
+          .map((row, i) => makeItem(row, source, platform, i))
+          .filter(Boolean)
+      );
+
+      // 3. 从 JS 里继续找可能的接口地址
+      const apiUrls = extractApiUrls(jsText, assetUrl);
+
+      for (const apiUrl of apiUrls.slice(0, 10)) {
+        const apiItems = await tryFetchJsonOrText(apiUrl, source, platform);
+        all.push(...apiItems);
+        await sleep(80);
+      }
+    } catch {}
+
+    await sleep(120);
+  }
+
+  // 4. 百度站内搜索兜底，确保百度 Tab 不空
+  const searchQueries = [
+    '世界杯大数据 百度 热榜',
+    '世界杯 热搜 百度',
+    '美加墨世界杯 百度 热搜',
+    '国足 世预赛 百度 热搜'
+  ];
+
+  for (const q of searchQueries) {
+    try {
+      const searchUrl = `https://www.baidu.com/s?wd=${encodeURIComponent(q)}`;
+      const html2 = await fetchText(searchUrl, {
+        referer: 'https://www.baidu.com/'
+      });
+
+      all.push(
+        ...extractCandidatesFromHtml(html2, searchUrl)
+          .map((row, i) => makeItem(row, source, platform, i))
+          .filter(Boolean)
+      );
+    } catch {}
+
+    await sleep(120);
+  }
+
+  // 5. 去重
+  const seen = new Set();
+  const out = [];
+
+  for (const item of all) {
+    const key = normalizeKey(item.title);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+  }
+
+  return out.slice(0, 80);
+}
 async function fetchSource(source, platform) {
   try {
     let items = [];
 
-    if (source.type === 'weiboHot') items = await fetchWeiboHot(source, platform);
-    else if (source.type === 'baiduTop') items = await fetchBaiduTop(source, platform);
-    else if (source.type === 'bilibiliSearch') items = await fetchBilibiliSearch(source, platform);
+  if (source.type === 'weiboHot') items = await fetchWeiboHot(source, platform);
+else if (source.type === 'baiduTop') items = await fetchBaiduTop(source, platform);
+else if (source.type === 'baiduWorldcupBigData') items = await fetchBaiduWorldcupBigData(source, platform);
+else if (source.type === 'bilibiliSearch') items = await fetchBilibiliSearch(source, platform);
     else if (source.type === 'zhihuHot') items = await fetchZhihuHot(source, platform);
     else if (source.type === 'htmlPage') items = await fetchHtmlPage(source, platform);
     else if (source.type === 'rss') items = await fetchRss(source, platform);
