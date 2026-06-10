@@ -1,9 +1,26 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import dayjs from 'dayjs';
 import * as cheerio from 'cheerio';
 import { XMLParser } from 'fast-xml-parser';
+
+
+function formatCNDate(date = new Date()) {
+  const parts = new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  }).formatToParts(date).reduce((acc, part) => {
+    acc[part.type] = part.value;
+    return acc;
+  }, {});
+  return `${parts.year}/${parts.month}/${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`;
+}
 
 const ROOT = process.cwd();
 const CONFIG_PATH = path.join(ROOT, 'config', 'worldcup.config.json');
@@ -347,7 +364,7 @@ async function run() {
   const totalItems = platforms.reduce((sum, p) => sum + p.count, 0);
   const payload = {
     generatedAt: new Date().toISOString(),
-    generatedAtCN: dayjs().format('YYYY/MM/DD HH:mm:ss'),
+    generatedAtCN: formatCNDate(),
     title: config.title,
     description: config.description,
     rsshubBase: RSSHUB_BASE,
@@ -369,7 +386,7 @@ async function run() {
     try {
       const fallback = JSON.parse(await fs.readFile(FALLBACK_PATH, 'utf-8'));
       fallback.generatedAt = new Date().toISOString();
-      fallback.generatedAtCN = dayjs().format('YYYY/MM/DD HH:mm:ss');
+      fallback.generatedAtCN = formatCNDate();
       fallback.sourceSummary = { ...payload.sourceSummary, finalItems: fallback.platforms?.reduce((sum, p) => sum + (p.count || 0), 0) || 0 };
       fallback.rsshubBase = RSSHUB_BASE;
       fallback.diagnostics = payload.diagnostics;
