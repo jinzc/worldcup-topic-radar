@@ -9,7 +9,7 @@ const OUT_PATH = path.join(OUT_DIR, 'worldcup.json');
 const FALLBACK_PATH = path.join(ROOT, 'config', 'fallback-sample.json');
 
 const USER_AGENT =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36 WorldCupTopicRadar/2.0';
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36 WorldCupTopicRadar/2.1';
 
 const FETCH_TIMEOUT = Number(process.env.FETCH_TIMEOUT || 10000);
 const MAX_CONCURRENCY = Number(process.env.MAX_CONCURRENCY || 5);
@@ -174,6 +174,7 @@ function formatCNDate(date = new Date()) {
     acc[p.type] = p.value;
     return acc;
   }, {});
+
   return `${parts.year}/${parts.month}/${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`;
 }
 
@@ -231,7 +232,8 @@ function cleanTitle(text = '') {
 function normalizeKey(text = '') {
   return cleanTitle(text)
     .toLowerCase()
-    .replace(/[\s\-—_·:：|｜,，。.!！?？#【】\[\]()（）《》"“”'‘’/\\]/g, '');
+    .replace(/[\s\-—_·:：|｜,，。.!！?？#【】\[\]()（）《》"“”'‘’]/g, '')
+    .replace(/[\/\\]/g, '');
 }
 
 function includesAny(text, words = []) {
@@ -253,18 +255,34 @@ function isWorldCupRelated(rawText) {
 
   const hasFootball = includesAny(text, FOOTBALL_CONTEXT_TERMS);
   const hasAction = includesAny(text, ACTION_TERMS);
-  const hasQualifier = text.includes('世预赛') || text.includes('预选赛') || text.includes('出线') || text.includes('晋级');
+  const hasQualifier =
+    text.includes('世预赛') ||
+    text.includes('预选赛') ||
+    text.includes('出线') ||
+    text.includes('晋级');
 
   return hasFootball && (hasAction || hasQualifier);
 }
 
 function extractTags(text) {
   const tags = [];
+
   for (const term of [...WORLD_CUP_TERMS, ...FOOTBALL_CONTEXT_TERMS, ...ACTION_TERMS]) {
-    if (String(text).toLowerCase().includes(String(term).toLowerCase())) tags.push(term);
+    if (String(text).toLowerCase().includes(String(term).toLowerCase())) {
+      tags.push(term);
+    }
   }
+
   const hashTags = [...String(text).matchAll(/#([^#\s]{2,40})#/g)].map((m) => m[1]);
   return uniq([...tags, ...hashTags]).slice(0, 12);
+}
+
+function safeOrigin(url) {
+  try {
+    return new URL(url).origin + '/';
+  } catch {
+    return 'https://www.baidu.com/';
+  }
 }
 
 async function fetchText(url, options = {}) {
@@ -290,32 +308,27 @@ async function fetchText(url, options = {}) {
   }
 }
 
-function safeOrigin(url) {
-  try {
-    return new URL(url).origin + '/';
-  } catch {
-    return 'https://www.baidu.com/';
-  }
-}
-
 async function fetchJson(url, options = {}) {
   const text = await fetchText(url, {
     ...options,
     accept: 'application/json,text/plain,*/*'
   });
+
   return JSON.parse(text);
 }
 
 function makeItem(raw, source, platform, index = 0) {
   const title = cleanTitle(raw.title || raw.query || raw.desc || raw.name || raw.word || '');
   const summary = cleanTitle(raw.summary || raw.description || raw.desc || raw.content || '');
+
   if (!title || title.length < 2) return null;
 
   const combined = `${title} ${summary}`;
   if (!isWorldCupRelated(combined)) return null;
 
   const url = raw.url || raw.link || raw.scheme || raw.arcurl || raw.jump_url || raw.pc_url || '';
-  const hot = Number(raw.hot || raw.hotScore || raw.heat || raw.score || raw.play || raw.view || raw.comment || 0) || 0;
+  const hot =
+    Number(raw.hot || raw.hotScore || raw.heat || raw.score || raw.play || raw.view || raw.comment || 0) || 0;
 
   return {
     id: hash(`${platform.id}:${source.id}:${normalizeKey(title)}:${url}`),
@@ -339,17 +352,27 @@ function makeItem(raw, source, platform, index = 0) {
 async function fetchWeiboHot(source, platform) {
   const json = await fetchJson(source.url, { referer: 'https://m.weibo.cn/' });
   const rows = [];
+
   for (const card of toArray(json?.data?.cards)) {
     rows.push(...toArray(card?.card_group));
   }
 
-  return rows.map((row, i) => makeItem({
-    title: row.desc || row.word || row.title_sub,
-    summary: row.desc_extr || row.note || '',
-    url: row.scheme || (row.desc ? `https://s.weibo.com/weibo?q=${encodeURIComponent(row.desc)}` : ''),
-    hot: row.desc_extr ? parseInt(String(row.desc_extr).replace(/\D/g, ''), 10) : 0,
-    rank: i + 1
-  }, source, platform, i)).filter(Boolean);
+  return rows
+    .map((row, i) =>
+      makeItem(
+        {
+          title: row.desc || row.word || row.title_sub,
+          summary: row.desc_extr || row.note || '',
+          url: row.scheme || (row.desc ? `https://s.weibo.com/weibo?q=${encodeURIComponent(row.desc)}` : ''),
+          hot: row.desc_extr ? parseInt(String(row.desc_extr).replace(/\D/g, ''), 10) : 0,
+          rank: i + 1
+        },
+        source,
+        platform,
+        i
+      )
+    )
+    .filter(Boolean);
 }
 
 async function fetchBaiduTop(source, platform) {
@@ -362,13 +385,117 @@ async function fetchBaiduTop(source, platform) {
 
   if (Array.isArray(json?.data?.list)) rows.push(...json.data.list);
 
-  return rows.map((row, i) => makeItem({
-    title: row.query || row.word || row.title,
-    summary: row.desc || row.description || '',
-    url: row.url || row.rawUrl || `https://www.baidu.com/s?wd=${encodeURIComponent(row.query || row.word || row.title || '世界杯')}`,
-    hot: row.hotScore || row.hot || 0,
-    rank: row.index || i + 1
-  }, source, platform, i)).filter(Boolean);
+  return rows
+    .map((row, i) =>
+      makeItem(
+        {
+          title: row.query || row.word || row.title,
+          summary: row.desc || row.description || '',
+          url:
+            row.url ||
+            row.rawUrl ||
+            `https://www.baidu.com/s?wd=${encodeURIComponent(row.query || row.word || row.title || '世界杯')}`,
+          hot: row.hotScore || row.hot || 0,
+          rank: row.index || i + 1
+        },
+        source,
+        platform,
+        i
+      )
+    )
+    .filter(Boolean);
+}
+
+function collectBaiduHotGroups(obj, out = []) {
+  if (!obj || typeof obj !== 'object') return out;
+
+  if (Array.isArray(obj.hotSearchList)) {
+    for (const group of obj.hotSearchList) {
+      out.push(group);
+    }
+  }
+
+  for (const value of Object.values(obj)) {
+    if (value && typeof value === 'object') {
+      collectBaiduHotGroups(value, out);
+    }
+  }
+
+  return out;
+}
+
+async function fetchBaiduWorldcupBigDataApi(source, platform) {
+  const json = await fetchJson(source.url, {
+    referer: 'https://seop-landing.baidu.com/seop-landing/worldcup_bigdata/hotlist',
+    headers: {
+      origin: 'https://seop-landing.baidu.com'
+    }
+  });
+
+  const groups = collectBaiduHotGroups(json);
+  const rows = [];
+
+  for (const group of groups) {
+    const groupTitle = group?.title || group?.name || '百度世界杯大数据';
+    const list = Array.isArray(group?.list)
+      ? group.list
+      : Array.isArray(group?.data)
+        ? group.data
+        : Array.isArray(group?.items)
+          ? group.items
+          : [];
+
+    list.forEach((item, index) => {
+      const title =
+        item?.content ||
+        item?.title ||
+        item?.word ||
+        item?.query ||
+        item?.name ||
+        item?.text ||
+        '';
+
+      if (!title) return;
+
+      const hotRaw = item?.num || item?.hot || item?.heat || item?.score || 0;
+      const hot = parseFloat(String(hotRaw).replace(/[^\d.]/g, '')) || 0;
+
+      rows.push({
+        title,
+        summary: `${groupTitle} · 百度世界杯大数据`,
+        url: item?.url || item?.link || `https://www.baidu.com/s?wd=${encodeURIComponent(title)}`,
+        hot,
+        rank: index + 1
+      });
+    });
+  }
+
+  if (rows.length === 0) {
+    const fallbackRows = flattenUnknownJson(json);
+
+    rows.push(
+      ...fallbackRows.map((row, i) => ({
+        title: row.title || row.name || row.word || row.query || row.desc || row.keyword || row.content || '',
+        summary: `${row.summary || row.description || row.desc || ''} 百度世界杯大数据`,
+        url: row.url || row.link || `https://www.baidu.com/s?wd=${encodeURIComponent(row.title || row.name || row.word || row.query || '世界杯')}`,
+        hot: row.hot || row.heat || row.score || row.num || 0,
+        rank: row.rank || row.index || i + 1
+      }))
+    );
+  }
+
+  const seen = new Set();
+
+  return rows
+    .map((row, index) => makeItem(row, source, platform, index))
+    .filter(Boolean)
+    .filter((item) => {
+      const key = normalizeKey(item.title);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 80);
 }
 
 async function fetchBilibiliSearch(source, platform) {
@@ -381,16 +508,29 @@ async function fetchBilibiliSearch(source, platform) {
       const json = await fetchJson(url, {
         referer: `https://search.bilibili.com/all?keyword=${encodeURIComponent(keyword)}`
       });
+
       const rows = toArray(json?.data?.result);
 
-      all.push(...rows.map((row, i) => makeItem({
-        title: row.title,
-        summary: row.description || row.tag || row.author,
-        url: row.arcurl || (row.bvid ? `https://www.bilibili.com/video/${row.bvid}` : ''),
-        hot: row.play || row.video_review || 0,
-        rank: i + 1
-      }, source, platform, i)).filter(Boolean));
+      all.push(
+        ...rows
+          .map((row, i) =>
+            makeItem(
+              {
+                title: row.title,
+                summary: row.description || row.tag || row.author,
+                url: row.arcurl || (row.bvid ? `https://www.bilibili.com/video/${row.bvid}` : ''),
+                hot: row.play || row.video_review || 0,
+                rank: i + 1
+              },
+              source,
+              platform,
+              i
+            )
+          )
+          .filter(Boolean)
+      );
     } catch {}
+
     await sleep(120);
   }
 
@@ -401,23 +541,24 @@ async function fetchZhihuHot(source, platform) {
   const json = await fetchJson(source.url, { referer: 'https://www.zhihu.com/hot' });
   const rows = toArray(json?.data);
 
-  return rows.map((row, i) => {
-    const target = row.target || row;
-    return makeItem({
-      title: target.title || row.title,
-      summary: target.excerpt || row.detail_text || row.description,
-      url: target.url || target.link?.url || row.url,
-      hot: row.detail_text ? parseInt(String(row.detail_text).replace(/\D/g, ''), 10) : 0,
-      rank: i + 1
-    }, source, platform, i);
-  }).filter(Boolean);
-}
+  return rows
+    .map((row, i) => {
+      const target = row.target || row;
 
-async function fetchHtmlPage(source, platform) {
-  const html = await fetchText(source.url, { referer: source.referer || source.url });
-  const candidates = extractCandidatesFromHtml(html, source.url);
-
-  return candidates.map((row, i) => makeItem(row, source, platform, i)).filter(Boolean);
+      return makeItem(
+        {
+          title: target.title || row.title,
+          summary: target.excerpt || row.detail_text || row.description,
+          url: target.url || target.link?.url || row.url,
+          hot: row.detail_text ? parseInt(String(row.detail_text).replace(/\D/g, ''), 10) : 0,
+          rank: i + 1
+        },
+        source,
+        platform,
+        i
+      );
+    })
+    .filter(Boolean);
 }
 
 function extractCandidatesFromHtml(html, baseUrl) {
@@ -427,6 +568,7 @@ function extractCandidatesFromHtml(html, baseUrl) {
   function add(title, url = '', summary = '') {
     title = cleanTitle(title);
     summary = cleanTitle(summary);
+
     if (!title || title.length < 4 || title.length > 120) return;
     if (!isWorldCupRelated(`${title} ${summary}`)) return;
 
@@ -444,30 +586,54 @@ function extractCandidatesFromHtml(html, baseUrl) {
     rows.push({ title, summary, url: finalUrl, rank: rows.length + 1 });
   }
 
-  for (const match of html.matchAll(/<a\b[^>]*?href=["']?([^"'\s>]+)["']?[^>]*>([\s\S]*?)<\/a>/gi)) {
+  for (const match of String(html).matchAll(/<a\b[^>]*?href=["']?([^"'\s>]+)["']?[^>]*>([\s\S]*?)<\/a>/gi)) {
     add(match[2], match[1]);
   }
 
-  for (const match of html.matchAll(/<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>/gi)) {
+  for (const match of String(html).matchAll(/<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>/gi)) {
     add(match[1], baseUrl);
   }
 
-  for (const match of html.matchAll(/<title[^>]*>([\s\S]*?)<\/title>/gi)) {
+  for (const match of String(html).matchAll(/<title[^>]*>([\s\S]*?)<\/title>/gi)) {
     add(match[1], baseUrl);
   }
 
-  const quoted = html.match(/["'`]([^"'`]{4,120}(世界杯|世预赛|国足|中国男足|美加墨|FIFA|国际足联)[^"'`]{0,80})["'`]/gi) || [];
+  const quoted =
+    String(html).match(/["'`]([^"'`]{4,120}(世界杯|世预赛|国足|中国男足|美加墨|FIFA|国际足联)[^"'`]{0,80})["'`]/gi) || [];
+
   for (const q of quoted.slice(0, 300)) {
     add(q.replace(/^["'`]|["'`]$/g, ''), baseUrl);
   }
 
   const plain = stripHtml(html);
-  const sentences = plain.split(/[。！？!?；;\n\r]/).map((s) => s.trim()).filter(Boolean);
+  const sentences = plain
+    .split(/[。！？!?；;\n\r]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
   for (const s of sentences.slice(0, 500)) {
-    if (s.length >= 6 && s.length <= 80) add(s, baseUrl);
+    if (s.length >= 6 && s.length <= 80) {
+      add(s, baseUrl);
+    }
   }
 
   return rows.slice(0, 150);
+}
+
+async function fetchHtmlPage(source, platform) {
+  const html = await fetchText(source.url, {
+    referer: source.referer || source.url
+  });
+
+  return extractCandidatesFromHtml(html, source.url)
+    .map((row, i) => makeItem(row, source, platform, i))
+    .filter(Boolean);
+}
+
+function getXmlValue(block, tag) {
+  const reg = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i');
+  const match = String(block).match(reg);
+  return match ? cleanTitle(match[1]) : '';
 }
 
 async function fetchRss(source, platform) {
@@ -485,33 +651,44 @@ async function fetchRss(source, platform) {
 
   for (const block of blocks) {
     const title = getXmlValue(block, 'title');
-    const summary = getXmlValue(block, 'description') || getXmlValue(block, 'summary') || getXmlValue(block, 'content');
+    const summary =
+      getXmlValue(block, 'description') ||
+      getXmlValue(block, 'summary') ||
+      getXmlValue(block, 'content');
+
     let link = getXmlValue(block, 'link');
     const hrefMatch = block.match(/<link[^>]+href=["']([^"']+)["'][^>]*>/i);
     if (hrefMatch) link = hrefMatch[1];
+
     rows.push({ title, summary, url: link });
   }
 
-  return rows.map((row, i) => makeItem(row, source, platform, i)).filter(Boolean);
-}
-
-function getXmlValue(block, tag) {
-  const reg = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i');
-  const match = String(block).match(reg);
-  return match ? cleanTitle(match[1]) : '';
+  return rows
+    .map((row, i) => makeItem(row, source, platform, i))
+    .filter(Boolean);
 }
 
 async function fetchBaiduSearch(source, platform) {
   const query = source.query || `site:${source.site} 世界杯`;
   const url = `https://www.baidu.com/s?wd=${encodeURIComponent(query)}`;
-  const html = await fetchText(url, { referer: 'https://www.baidu.com/' });
-  const candidates = extractCandidatesFromHtml(html, url);
+  const html = await fetchText(url, {
+    referer: 'https://www.baidu.com/'
+  });
 
-  return candidates.map((row, i) => makeItem({
-    ...row,
-    url: row.url || url,
-    rank: i + 1
-  }, source, platform, i)).filter(Boolean);
+  return extractCandidatesFromHtml(html, url)
+    .map((row, i) =>
+      makeItem(
+        {
+          ...row,
+          url: row.url || url,
+          rank: i + 1
+        },
+        source,
+        platform,
+        i
+      )
+    )
+    .filter(Boolean);
 }
 
 async function fetchNewsHotTopics(source, platform) {
@@ -534,14 +711,15 @@ async function fetchNewsHotTopics(source, platform) {
     try {
       const url = new URL(file, base).toString();
       const json = await fetchJson(url, { referer: base });
-      const rows = flattenUnknownJson(json);
-      all.push(...rows);
+      all.push(...flattenUnknownJson(json));
     } catch {}
   }
 
   try {
     const html = await fetchText(base, { referer: base });
-    const scriptLinks = [...html.matchAll(/<script[^>]+src=["']([^"']+)["']/gi)].map((m) => new URL(m[1], base).toString());
+    const scriptLinks = [...html.matchAll(/<script[^>]+src=["']([^"']+)["']/gi)]
+      .map((m) => new URL(m[1], base).toString());
+
     for (const jsUrl of scriptLinks.slice(0, 8)) {
       try {
         const js = await fetchText(jsUrl, { referer: base });
@@ -551,25 +729,33 @@ async function fetchNewsHotTopics(source, platform) {
     }
   } catch {}
 
-  return all.map((row, i) => {
-    const title = row.title || row.name || row.word || row.query || row.desc || '';
-    const platformText = `${row.platform || row.platformName || row.source || row.sourceName || ''}`;
-    const shouldKeepPlatform =
-      !platformText ||
-      platformText.includes(platform.name) ||
-      platformText.toLowerCase().includes(platform.id.toLowerCase()) ||
-      source.allowCrossPlatform;
+  return all
+    .map((row, i) => {
+      const title = row.title || row.name || row.word || row.query || row.desc || '';
+      const platformText = `${row.platform || row.platformName || row.source || row.sourceName || ''}`;
 
-    if (!shouldKeepPlatform) return null;
+      const shouldKeepPlatform =
+        !platformText ||
+        platformText.includes(platform.name) ||
+        platformText.toLowerCase().includes(platform.id.toLowerCase()) ||
+        source.allowCrossPlatform;
 
-    return makeItem({
-      title,
-      summary: row.summary || row.description || row.desc || '',
-      url: row.url || row.link || '',
-      hot: row.hot || row.heat || row.score || 0,
-      rank: row.rank || row.index || i + 1
-    }, source, platform, i);
-  }).filter(Boolean);
+      if (!shouldKeepPlatform) return null;
+
+      return makeItem(
+        {
+          title,
+          summary: row.summary || row.description || row.desc || '',
+          url: row.url || row.link || '',
+          hot: row.hot || row.heat || row.score || 0,
+          rank: row.rank || row.index || i + 1
+        },
+        source,
+        platform,
+        i
+      );
+    })
+    .filter(Boolean);
 }
 
 function flattenUnknownJson(json) {
@@ -584,7 +770,16 @@ function flattenUnknownJson(json) {
     }
 
     if (typeof value === 'object') {
-      const title = value.title || value.name || value.word || value.query || value.desc || value.keyword;
+      const title =
+        value.title ||
+        value.name ||
+        value.word ||
+        value.query ||
+        value.desc ||
+        value.keyword ||
+        value.content ||
+        value.text;
+
       if (title) {
         out.push({
           ...context,
@@ -594,12 +789,14 @@ function flattenUnknownJson(json) {
       }
 
       const nextContext = {
-        platform: value.platform || value.platformName || value.name || context.platform,
+        platform: value.platform || value.platformName || context.platform,
         source: value.source || value.sourceName || context.source
       };
 
       for (const key of Object.keys(value)) {
-        if (typeof value[key] === 'object') walk(value[key], nextContext);
+        if (typeof value[key] === 'object') {
+          walk(value[key], nextContext);
+        }
       }
     }
   }
@@ -623,23 +820,16 @@ const PLATFORM_SOURCES = {
       type: 'newsHotTopics',
       base: 'https://jinzc.github.io/news-hot-topics/',
       weight: 75
-    },
-    {
-      id: 'rsshub-weibo-search',
-      name: 'RSSHub 微博世界杯搜索',
-      type: 'rss',
-      path: '/weibo/search/hot',
-      weight: 60
     }
   ],
 
   baidu: [
     {
-      id: 'baidu-worldcup-bigdata',
+      id: 'baidu-worldcup-bigdata-api',
       name: '百度世界杯大数据',
-      type: 'baiduWorldcupBigData',
-      url: 'https://seop-landing.baidu.com/seop-landing/worldcup_bigdata/hotlist',
-      weight: 100
+      type: 'baiduWorldcupBigDataApi',
+      url: `https://motion.baidu.com/api/pagedata?actid=&act=&activity_id=&sessionId=${Date.now()}&aid=fifa_bigdata2026&pid=hotlist`,
+      weight: 120
     },
     {
       id: 'baidu-realtime',
@@ -814,254 +1004,15 @@ const PLATFORM_SOURCES = {
     }
   ]
 };
-function extractAssetUrls(html, baseUrl) {
-  const urls = [];
 
-  for (const match of String(html).matchAll(/<(script|link)[^>]+(?:src|href)=["']([^"']+)["'][^>]*>/gi)) {
-    const raw = match[2];
-    if (!raw) continue;
-
-    try {
-      const full = new URL(raw, baseUrl).toString();
-      if (
-        full.includes('.js') ||
-        full.includes('worldcup') ||
-        full.includes('bigdata') ||
-        full.includes('hotlist') ||
-        full.includes('static')
-      ) {
-        urls.push(full);
-      }
-    } catch {}
-  }
-
-  return uniq(urls).slice(0, 20);
-}
-
-function extractApiUrls(text, baseUrl) {
-  const urls = [];
-
-  const patterns = [
-    /https?:\/\/[^"'`\s<>]+/gi,
-    /["'`](\/[^"'`<>]*(?:api|ajax|worldcup|bigdata|hotlist|rank|list|data)[^"'`<>]*)["'`]/gi
-  ];
-
-  for (const pattern of patterns) {
-    for (const match of String(text).matchAll(pattern)) {
-      const raw = match[1] || match[0];
-      if (!raw) continue;
-
-      try {
-        const full = new URL(raw, baseUrl).toString();
-
-        if (
-          full.includes('worldcup') ||
-          full.includes('bigdata') ||
-          full.includes('hotlist') ||
-          full.includes('rank') ||
-          full.includes('list') ||
-          full.includes('data')
-        ) {
-          urls.push(full);
-        }
-      } catch {}
-    }
-  }
-
-  return uniq(urls).slice(0, 30);
-}
-
-function extractCandidatesFromLooseText(text, baseUrl) {
-  const rows = [];
-  const seen = new Set();
-
-  function add(title, summary = '', url = baseUrl) {
-    title = cleanTitle(title);
-    summary = cleanTitle(summary);
-
-    if (!title || title.length < 4 || title.length > 120) return;
-    if (!isWorldCupRelated(`${title} ${summary}`)) return;
-
-    const key = normalizeKey(title);
-    if (!key || seen.has(key)) return;
-    seen.add(key);
-
-    rows.push({
-      title,
-      summary,
-      url,
-      rank: rows.length + 1
-    });
-  }
-
-  const source = String(text || '');
-
-  // 1. 抽 JSON 里的 title/query/word/name/desc
-  const jsonTitlePatterns = [
-    /"(?:title|query|word|name|desc|keyword|text)"\s*:\s*"([^"]{4,120})"/gi,
-    /'(?:title|query|word|name|desc|keyword|text)'\s*:\s*'([^']{4,120})'/gi
-  ];
-
-  for (const pattern of jsonTitlePatterns) {
-    for (const match of source.matchAll(pattern)) {
-      add(match[1]);
-    }
-  }
-
-  // 2. 抽包含世界杯关键词的普通字符串
-  const quoted = source.match(/["'`]([^"'`]{4,120}(世界杯|世预赛|国足|中国男足|美加墨|FIFA|国际足联)[^"'`]{0,80})["'`]/gi) || [];
-  for (const q of quoted.slice(0, 300)) {
-    add(q.replace(/^["'`]|["'`]$/g, ''));
-  }
-
-  // 3. 抽页面纯文本里的短句
-  const plain = stripHtml(source);
-  const sentences = plain
-    .split(/[。！？!?；;\n\r]/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-
-  for (const s of sentences.slice(0, 600)) {
-    if (s.length >= 6 && s.length <= 100) {
-      add(s);
-    }
-  }
-
-  return rows.slice(0, 150);
-}
-
-async function tryFetchJsonOrText(url, source, platform) {
-  try {
-    const text = await fetchText(url, {
-      referer: 'https://seop-landing.baidu.com/',
-      accept: 'application/json,text/plain,text/html,*/*'
-    });
-
-    let rows = [];
-
-    try {
-      const json = JSON.parse(text);
-      rows = flattenUnknownJson(json).map((row, i) => {
-        return makeItem({
-          title: row.title || row.name || row.word || row.query || row.desc || row.keyword || '',
-          summary: row.summary || row.description || row.desc || '',
-          url: row.url || row.link || url,
-          hot: row.hot || row.heat || row.score || row.index || 0,
-          rank: row.rank || row.index || i + 1
-        }, source, platform, i);
-      }).filter(Boolean);
-    } catch {
-      rows = extractCandidatesFromLooseText(text, url).map((row, i) => {
-        return makeItem(row, source, platform, i);
-      }).filter(Boolean);
-    }
-
-    return rows;
-  } catch {
-    return [];
-  }
-}
-
-async function fetchBaiduWorldcupBigData(source, platform) {
-  const all = [];
-  const baseUrl = source.url;
-
-  // 1. 直接抓百度世界杯大数据页面
-  let html = '';
-  try {
-    html = await fetchText(baseUrl, {
-      referer: 'https://www.baidu.com/',
-      accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
-    });
-
-    all.push(
-      ...extractCandidatesFromHtml(html, baseUrl)
-        .map((row, i) => makeItem(row, source, platform, i))
-        .filter(Boolean)
-    );
-
-    all.push(
-      ...extractCandidatesFromLooseText(html, baseUrl)
-        .map((row, i) => makeItem(row, source, platform, i))
-        .filter(Boolean)
-    );
-  } catch {}
-
-  // 2. 抓页面引用的 JS / 静态资源，因为榜单很可能在前端脚本或接口里
-  const assetUrls = extractAssetUrls(html, baseUrl);
-
-  for (const assetUrl of assetUrls.slice(0, 12)) {
-    try {
-      const jsText = await fetchText(assetUrl, {
-        referer: baseUrl,
-        accept: 'application/javascript,text/javascript,text/plain,*/*'
-      });
-
-      all.push(
-        ...extractCandidatesFromLooseText(jsText, assetUrl)
-          .map((row, i) => makeItem(row, source, platform, i))
-          .filter(Boolean)
-      );
-
-      // 3. 从 JS 里继续找可能的接口地址
-      const apiUrls = extractApiUrls(jsText, assetUrl);
-
-      for (const apiUrl of apiUrls.slice(0, 10)) {
-        const apiItems = await tryFetchJsonOrText(apiUrl, source, platform);
-        all.push(...apiItems);
-        await sleep(80);
-      }
-    } catch {}
-
-    await sleep(120);
-  }
-
-  // 4. 百度站内搜索兜底，确保百度 Tab 不空
-  const searchQueries = [
-    '世界杯大数据 百度 热榜',
-    '世界杯 热搜 百度',
-    '美加墨世界杯 百度 热搜',
-    '国足 世预赛 百度 热搜'
-  ];
-
-  for (const q of searchQueries) {
-    try {
-      const searchUrl = `https://www.baidu.com/s?wd=${encodeURIComponent(q)}`;
-      const html2 = await fetchText(searchUrl, {
-        referer: 'https://www.baidu.com/'
-      });
-
-      all.push(
-        ...extractCandidatesFromHtml(html2, searchUrl)
-          .map((row, i) => makeItem(row, source, platform, i))
-          .filter(Boolean)
-      );
-    } catch {}
-
-    await sleep(120);
-  }
-
-  // 5. 去重
-  const seen = new Set();
-  const out = [];
-
-  for (const item of all) {
-    const key = normalizeKey(item.title);
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    out.push(item);
-  }
-
-  return out.slice(0, 80);
-}
 async function fetchSource(source, platform) {
   try {
     let items = [];
 
-  if (source.type === 'weiboHot') items = await fetchWeiboHot(source, platform);
-else if (source.type === 'baiduTop') items = await fetchBaiduTop(source, platform);
-else if (source.type === 'baiduWorldcupBigData') items = await fetchBaiduWorldcupBigData(source, platform);
-else if (source.type === 'bilibiliSearch') items = await fetchBilibiliSearch(source, platform);
+    if (source.type === 'weiboHot') items = await fetchWeiboHot(source, platform);
+    else if (source.type === 'baiduTop') items = await fetchBaiduTop(source, platform);
+    else if (source.type === 'baiduWorldcupBigDataApi') items = await fetchBaiduWorldcupBigDataApi(source, platform);
+    else if (source.type === 'bilibiliSearch') items = await fetchBilibiliSearch(source, platform);
     else if (source.type === 'zhihuHot') items = await fetchZhihuHot(source, platform);
     else if (source.type === 'htmlPage') items = await fetchHtmlPage(source, platform);
     else if (source.type === 'rss') items = await fetchRss(source, platform);
@@ -1120,6 +1071,20 @@ function scoreItem(item) {
   return sourceScore + rankScore + hotScore + tagScore;
 }
 
+function uniqBy(arr, fn) {
+  const seen = new Set();
+  const out = [];
+
+  for (const item of arr) {
+    const key = fn(item);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+  }
+
+  return out;
+}
+
 function mergeItems(items) {
   const map = new Map();
 
@@ -1171,20 +1136,6 @@ function mergeItems(items) {
     .slice(0, config.maxItemsPerPlatform || 80);
 }
 
-function uniqBy(arr, fn) {
-  const seen = new Set();
-  const out = [];
-
-  for (const item of arr) {
-    const key = fn(item);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(item);
-  }
-
-  return out;
-}
-
 async function run() {
   await fs.mkdir(OUT_DIR, { recursive: true });
 
@@ -1228,7 +1179,9 @@ async function run() {
     generatedAt: new Date().toISOString(),
     generatedAtCN: formatCNDate(),
     title: config.title || '世界杯话题雷达',
-    description: config.description || '聚合微博、百度、B站、知乎、抖音、虎扑、懂球帝、小红书、咪咕、网易等平台的世界杯相关话题。',
+    description:
+      config.description ||
+      '聚合微博、百度、B站、知乎、抖音、虎扑、懂球帝、小红书、咪咕、网易等平台的世界杯相关话题。',
     rsshubBase: RSSHUB_BASE,
     sourceSummary: {
       totalSources: tasks.length,
