@@ -1,0 +1,160 @@
+{
+  "generatedAt": "",
+  "generatedAtCN": "",
+  "title": "世界杯话题雷达",
+  "description": "当前为示例数据。上传 GitHub 后运行 Actions，会自动抓取国内平台世界杯相关话题。",
+  "rsshubBase": "https://rsshub.app",
+  "sourceSummary": {
+    "totalSources": 0,
+    "okSources": 0,
+    "failedSources": 0,
+    "candidateItems": 0,
+    "matchedItems": 0,
+    "finalItems": 10
+  },
+  "isFallback": true,
+  "platforms": [
+    {
+      "id": "weibo",
+      "name": "微博",
+      "emoji": "🔥",
+      "color": "#ef4444",
+      "count": 2,
+      "availableSourceCount": 0,
+      "sourceCount": 4,
+      "rawMatchedCount": 2,
+      "sources": [],
+      "items": [
+        { "id": "sample-weibo-1", "title": "2026世界杯赛程公布", "summary": "示例：微博热搜中出现世界杯赛程相关讨论。", "url": "https://s.weibo.com/weibo?q=2026%E4%B8%96%E7%95%8C%E6%9D%AF", "rank": 1, "score": 96, "tags": ["世界杯", "2026世界杯", "赛程"], "sourceName": "示例数据", "sources": [{ "name": "示例数据", "rank": 1 }] },
+        { "id": "sample-weibo-2", "title": "国足世预赛出线形势", "summary": "示例：国足、世预赛、亚洲区预选赛相关讨论。", "url": "https://s.weibo.com/weibo?q=%E5%9B%BD%E8%B6%B3%20%E4%B8%96%E9%A2%84%E8%B5%9B", "rank": 2, "score": 90, "tags": ["国足", "世预赛", "亚洲区预选赛"], "sourceName": "示例数据", "sources": [{ "name": "示例数据", "rank": 2 }] }
+      ]
+    },
+    {
+      "id": "baidu",
+      "name": "百度",
+      "emoji": "🔎",
+      "color": "#2563eb",
+      "count": 1,
+      "availableSourceCount": 0,
+      "sourceCount": 4,
+      "rawMatchedCount": 1,
+      "sources": [],
+      "items": [
+        { "id": "sample-baidu-1", "title": "美加墨世界杯分组抽签时间", "summary": "示例：百度搜索/热搜中出现世界杯抽签相关内容。", "url": "https://www.baidu.com/s?wd=%E7%BE%8E%E5%8A%A0%E5%A2%A8%E4%B8%96%E7%95%8C%E6%9D%AF", "rank": 1, "score": 88, "tags": ["美加墨世界杯", "世界杯", "抽签"], "sourceName": "示例数据", "sources": [{ "name": "示例数据", "rank": 1 }] }
+      ]
+    },
+    {
+      "id": "bilibili",
+      "name": "B站",
+      "emoji": "📺",
+      "color": "#06b6d4",
+      "count": 1,
+      "availableSourceCount": 0,
+      "sourceCount": 4,
+      "rawMatchedCount": 1,
+      "sources": [],
+      "items": [
+        { "id": "sample-bili-1", "title": "世界杯32队变48队后国足机会多大", "summary": "示例：B站搜索视频标题。", "url": "https://search.bilibili.com/all?keyword=%E4%B8%96%E7%95%8C%E6%9D%AF", "rank": 1, "score": 82, "tags": ["世界杯", "国足", "扩军"], "sourceName": "示例数据", "sources": [{ "name": "示例数据", "rank": 1 }] }
+      ]
+    },
+    {
+      "id": "zhihu",
+      "name": "知乎",
+      "emoji": "💬",
+      "color": "#0f766e",
+      "count": 1,
+      "availableSourceCount": 0,
+      "sourceCount": 3,
+      "rawMatchedCount": 1,
+      "sources": [],
+      "items": [
+        { "id": "sample-zhihu-1", "title": "如何看待国足世预赛出线概率", "summary": "示例：知乎热榜/搜索中的问答型话题。", "url": "https://www.zhihu.com/search?q=%E5%9B%BD%E8%B6%B3%20%E4%B8%96%E9%A2%84%E8%B5%9B", "rank": 1, "score": 80, "tags": ["国足", "世预赛", "出线"], "sourceName": "示例数据", "sources": [{ "name": "示例数据", "rank": 1 }] }
+      ]
+    },
+    {
+      "id": "douyin",
+      "name": "抖音",
+      "emoji": "🎵",
+      "color": "#111827",
+      "count": 1,
+      "availableSourceCount": 0,
+      "sourceCount": 3,
+      "rawMatchedCount": 1,
+      "sources": [],
+      "items": [
+        { "id": "sample-douyin-1", "title": "世界杯主题曲挑战", "summary": "示例：抖音世界杯短视频话题。", "url": "https://www.douyin.com/search/%E4%B8%96%E7%95%8C%E6%9D%AF", "rank": 1, "score": 76, "tags": ["世界杯", "主题曲"], "sourceName": "示例数据", "sources": [{ "name": "示例数据", "rank": 1 }] }
+      ]
+    },
+    {
+      "id": "hupu",
+      "name": "虎扑",
+      "emoji": "🏀",
+      "color": "#f97316",
+      "count": 1,
+      "availableSourceCount": 0,
+      "sourceCount": 4,
+      "rawMatchedCount": 1,
+      "sources": [],
+      "items": [
+        { "id": "sample-hupu-1", "title": "国足世预赛这个小组还有机会吗", "summary": "示例：虎扑足球社区讨论。", "url": "https://bbs.hupu.com/search?q=%E4%B8%96%E9%A2%84%E8%B5%9B", "rank": 1, "score": 78, "tags": ["国足", "世预赛", "小组赛"], "sourceName": "示例数据", "sources": [{ "name": "示例数据", "rank": 1 }] }
+      ]
+    },
+    {
+      "id": "dongqiudi",
+      "name": "懂球帝",
+      "emoji": "⚽",
+      "color": "#16a34a",
+      "count": 1,
+      "availableSourceCount": 0,
+      "sourceCount": 3,
+      "rawMatchedCount": 1,
+      "sources": [],
+      "items": [
+        { "id": "sample-dqd-1", "title": "世界杯亚洲区预选赛积分榜更新", "summary": "示例：懂球帝世界杯/世预赛新闻。", "url": "https://www.dongqiudi.com/", "rank": 1, "score": 86, "tags": ["世界杯", "亚洲区预选赛", "积分榜"], "sourceName": "示例数据", "sources": [{ "name": "示例数据", "rank": 1 }] }
+      ]
+    },
+    {
+      "id": "xiaohongshu",
+      "name": "小红书",
+      "emoji": "📕",
+      "color": "#dc2626",
+      "count": 1,
+      "availableSourceCount": 0,
+      "sourceCount": 2,
+      "rawMatchedCount": 1,
+      "sources": [],
+      "items": [
+        { "id": "sample-xhs-1", "title": "世界杯观赛攻略和球衣穿搭", "summary": "示例：小红书世界杯生活方式内容。", "url": "https://www.xiaohongshu.com/search_result?keyword=%E4%B8%96%E7%95%8C%E6%9D%AF", "rank": 1, "score": 68, "tags": ["世界杯", "球衣"], "sourceName": "示例数据", "sources": [{ "name": "示例数据", "rank": 1 }] }
+      ]
+    },
+    {
+      "id": "migu",
+      "name": "咪咕",
+      "emoji": "📡",
+      "color": "#7c3aed",
+      "count": 1,
+      "availableSourceCount": 0,
+      "sourceCount": 3,
+      "rawMatchedCount": 1,
+      "sources": [],
+      "items": [
+        { "id": "sample-migu-1", "title": "咪咕世界杯直播权益与赛程", "summary": "示例：咪咕世界杯直播/赛程内容。", "url": "https://www.miguvideo.com/", "rank": 1, "score": 72, "tags": ["世界杯", "直播", "赛程"], "sourceName": "示例数据", "sources": [{ "name": "示例数据", "rank": 1 }] }
+      ]
+    },
+    {
+      "id": "netease",
+      "name": "网易",
+      "emoji": "📰",
+      "color": "#b91c1c",
+      "count": 1,
+      "availableSourceCount": 0,
+      "sourceCount": 3,
+      "rawMatchedCount": 1,
+      "sources": [],
+      "items": [
+        { "id": "sample-netease-1", "title": "网易体育解析世界杯出线形势", "summary": "示例：网易体育世界杯专题新闻。", "url": "https://sports.163.com/", "rank": 1, "score": 74, "tags": ["世界杯", "出线"], "sourceName": "示例数据", "sources": [{ "name": "示例数据", "rank": 1 }] }
+      ]
+    }
+  ],
+  "diagnostics": []
+}
