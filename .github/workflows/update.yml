@@ -1,0 +1,54 @@
+name: Update World Cup Radar
+
+on:
+  workflow_dispatch:
+  schedule:
+    # UTC 时间。北京时间 7:00-23:00 对应前一日 23:00 至当日 15:00 UTC，整点更新。
+    - cron: '0 * * * *'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Update World Cup data
+        env:
+          # 可选：如果 rsshub.app 不稳定，可在仓库 Settings -> Secrets and variables -> Actions -> Variables 里配置 RSSHUB_BASE
+          # 例如：https://rsshub.rssforever.com 或你的自建 RSSHub
+          RSSHUB_BASE: ${{ vars.RSSHUB_BASE }}
+          MAX_CONCURRENCY: 4
+        run: npm run update
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
