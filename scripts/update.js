@@ -9,7 +9,7 @@ const OUT_PATH = path.join(OUT_DIR, 'worldcup.json');
 const FALLBACK_PATH = path.join(ROOT, 'config', 'fallback-sample.json');
 
 const USER_AGENT =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36 WorldCupTopicRadar/2.1';
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36 WorldCupTopicRadar/2.2';
 
 const FETCH_TIMEOUT = Number(process.env.FETCH_TIMEOUT || 10000);
 const MAX_CONCURRENCY = Number(process.env.MAX_CONCURRENCY || 5);
@@ -106,7 +106,10 @@ const FOOTBALL_CONTEXT_TERMS = [
   '姆巴佩',
   '哈兰德',
   '贝林厄姆',
-  '亚马尔'
+  '亚马尔',
+  '黄健翔',
+  '刘建宏',
+  '詹俊'
 ];
 
 const ACTION_TERMS = [
@@ -138,7 +141,20 @@ const ACTION_TERMS = [
   '球场',
   '举办城市',
   '吉祥物',
-  '主题曲'
+  '主题曲',
+  '回应',
+  '谈',
+  '称',
+  '说',
+  '宣布',
+  '确认',
+  '拒签',
+  '解读',
+  '前瞻',
+  '预测',
+  '评价',
+  '破防',
+  '洗脑'
 ];
 
 const EXCLUDE_TERMS = [
@@ -158,6 +174,51 @@ const EXCLUDE_TERMS = [
   '世界杯模拟器',
   '世界杯广告招商',
   '世界杯素材模板'
+];
+
+const BOILERPLATE_PHRASES = [
+  '咪咕世界杯专题页',
+  '咪咕视频首页',
+  '咪咕视频',
+  '世界杯专题页',
+  '世界杯专题',
+  '视频首页',
+  '专题页',
+  '专题',
+  '首页',
+  '百度热搜',
+  '百度世界杯大数据',
+  '资讯热榜',
+  '世界杯搜索',
+  'B站世界杯搜索',
+  '虎扑足球',
+  '虎扑足球话题区',
+  '懂球帝首页',
+  '网易体育',
+  '百度站内搜索',
+  '官方前瞻片',
+  '前瞻片',
+  '宣传片',
+  '完整视频',
+  '高清视频',
+  '视频',
+  '空间',
+  '频道',
+  '专区'
+];
+
+const GENERIC_TITLE_PATTERNS = [
+  /^(20\d{2})?世界杯$/,
+  /^世界杯大数据$/,
+  /^美加墨世界杯$/,
+  /^FIFA世界杯$/,
+  /^国际足联世界杯$/,
+  /^世界杯专题$/,
+  /^世界杯搜索$/,
+  /^世界杯直播$/,
+  /^世界杯赛程$/,
+  /^世界杯门票$/,
+  /^世界杯球票$/
 ];
 
 function formatCNDate(date = new Date()) {
@@ -277,6 +338,105 @@ function extractTags(text) {
   return uniq([...tags, ...hashTags]).slice(0, 12);
 }
 
+function compactTopicTitle(input = '', source = {}) {
+  let title = cleanTitle(input);
+
+  title = title
+    .replace(/^[>\s]+/g, '')
+    .replace(/^(微博|百度|知乎|抖音|B站|哔哩哔哩|虎扑|懂球帝|小红书|咪咕|网易)[\s·：:｜|-]+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  for (const phrase of BOILERPLATE_PHRASES) {
+    title = title.replaceAll(phrase, '');
+  }
+
+  // “看美加墨世界杯故事 一起听黄健翔深刻解读” → “黄健翔解读美加墨世界杯”
+  let m = title.match(/看(.{0,24}世界杯.{0,12})故事.*?听(.{2,8})深刻解读/);
+  if (m) {
+    title = `${m[2]}解读${m[1]}`;
+  }
+
+  // “《黄健翔谈“美加墨”》宣传片：看世界杯故事 听黄健翔深刻解读” → “黄健翔谈美加墨”
+  m = title.match(/《([^》]{2,40})》/);
+  if (m && /黄健翔|世界杯|美加墨|FIFA|国足|世预赛/.test(m[1])) {
+    title = m[1];
+  }
+
+  title = title
+    .replace(/[“”]/g, '')
+    .replace(/[：:｜|]\s*$/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/^[,，、\s]+|[,，、\s]+$/g, '')
+    .trim();
+
+  return title;
+}
+
+function isGenericOrInvalidTitle(title = '', source = {}) {
+  const t = cleanTitle(title);
+  const normalized = normalizeKey(t);
+
+  if (!t || t.length < 4) return true;
+
+  for (const pattern of GENERIC_TITLE_PATTERNS) {
+    if (pattern.test(t)) return true;
+  }
+
+  // 关键词堆砌：荷兰队,巴西队,2026,世界杯,德国队
+  const commaParts = t.split(/[，,、\s]+/).filter(Boolean);
+  if (commaParts.length >= 4 && !includesAny(t, ACTION_TERMS)) {
+    return true;
+  }
+
+  // 只有平台/频道/页面信息，没有具体事件
+  if (
+    /首页|专题页|视频首页|搜索|榜单|热榜|专区|频道|空间/.test(t) &&
+    !includesAny(t, ACTION_TERMS) &&
+    !/回应|谈|称|说|宣布|官宣|发布|确认|拒签|晋级|出线|淘汰|抽签|解读|前瞻/.test(t)
+  ) {
+    return true;
+  }
+
+  // 过短且只有世界杯大词，不适合作为运营话题
+  if (
+    normalized.length <= 10 &&
+    (normalized.includes('世界杯') || normalized.includes('2026世界杯')) &&
+    !includesAny(t, ACTION_TERMS)
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+function getTopicMergeKey(item) {
+  const title = compactTopicTitle(item.title || '', item);
+
+  // 针对当前已经出现的重复包装做强合并
+  if (/黄健翔/.test(title) && /美加墨|世界杯/.test(title)) {
+    return '黄健翔-美加墨世界杯-解读';
+  }
+
+  if (/FIFA/.test(title) && /东道主|参赛前景|美加墨/.test(title)) {
+    return 'FIFA-美加墨东道主参赛前景';
+  }
+
+  if (/美国海关/.test(title) && /主裁|裁判/.test(title) && /拒签/.test(title)) {
+    return '美国海关-世界杯主裁-拒签';
+  }
+
+  return normalizeKey(title)
+    .replace(/世界杯故事/g, '')
+    .replace(/深刻解读/g, '解读')
+    .replace(/一起听/g, '')
+    .replace(/一起看/g, '')
+    .replace(/看/g, '')
+    .replace(/听/g, '')
+    .replace(/官方前瞻片/g, '')
+    .replace(/宣传片/g, '');
+}
+
 function safeOrigin(url) {
   try {
     return new URL(url).origin + '/';
@@ -295,7 +455,7 @@ async function fetchText(url, options = {}) {
       headers: {
         'user-agent': USER_AGENT,
         'accept': options.accept || 'text/html,application/xhtml+xml,application/xml;q=0.9,application/rss+xml;q=0.8,application/json;q=0.7,*/*;q=0.5',
-        'accept-language': 'zh-CN,zh;q=0.9,en;q=0.5',
+        'accept-language': 'zh-CN,zh;q=0.9',
         'referer': options.referer || safeOrigin(url),
         ...(options.headers || {})
       }
@@ -318,13 +478,30 @@ async function fetchJson(url, options = {}) {
 }
 
 function makeItem(raw, source, platform, index = 0) {
-  const title = cleanTitle(raw.title || raw.query || raw.desc || raw.name || raw.word || '');
+  const originalTitle = cleanTitle(raw.title || raw.query || raw.desc || raw.name || raw.word || '');
   const summary = cleanTitle(raw.summary || raw.description || raw.desc || raw.content || '');
+
+  if (!originalTitle || originalTitle.length < 2) return null;
+
+  const isBaiduOfficial = source.type === 'baiduWorldcupBigDataApi';
+
+  let title = isBaiduOfficial
+    ? originalTitle
+    : compactTopicTitle(originalTitle, source);
 
   if (!title || title.length < 2) return null;
 
-  const combined = `${title} ${summary}`;
-  if (!isWorldCupRelated(combined)) return null;
+  // 百度官方接口本身就是干净榜单，少干预；其他平台强过滤无效标题
+  if (!isBaiduOfficial && isGenericOrInvalidTitle(title, source)) {
+    return null;
+  }
+
+  const combined = `${title} ${summary} ${source.name || ''}`;
+
+  // 百度官方世界杯大数据接口内的标题，不强制要求标题本身含世界杯
+  if (!isBaiduOfficial && !isWorldCupRelated(combined)) {
+    return null;
+  }
 
   const url = raw.url || raw.link || raw.scheme || raw.arcurl || raw.jump_url || raw.pc_url || '';
   const hot =
@@ -339,12 +516,13 @@ function makeItem(raw, source, platform, index = 0) {
     sourceName: source.name,
     sourceType: source.type,
     title,
+    originalTitle,
     summary: summary && summary !== title ? summary : '',
     url,
     rank: raw.rank || raw.index || index + 1,
     hot,
     weight: Number(source.weight || 50),
-    tags: extractTags(combined),
+    tags: extractTags(`${title} ${summary} ${originalTitle}`),
     capturedAt: new Date().toISOString()
   };
 }
@@ -1089,7 +1267,7 @@ function mergeItems(items) {
   const map = new Map();
 
   for (const item of items) {
-    const key = normalizeKey(item.title);
+    const key = getTopicMergeKey(item);
     if (!key || key.length < 2) continue;
 
     const current = map.get(key);
@@ -1102,7 +1280,8 @@ function mergeItems(items) {
             id: item.sourceId,
             name: item.sourceName,
             rank: item.rank,
-            url: item.url
+            url: item.url,
+            title: item.originalTitle || item.title
           }
         ],
         sourceCount: 1,
@@ -1113,13 +1292,19 @@ function mergeItems(items) {
         id: item.sourceId,
         name: item.sourceName,
         rank: item.rank,
-        url: item.url
+        url: item.url,
+        title: item.originalTitle || item.title
       });
 
       current.sourceCount = uniq(current.sources.map((s) => s.id)).length;
       current.hot = Math.max(Number(current.hot || 0), Number(item.hot || 0));
       current.tags = uniq([...current.tags, ...item.tags]).slice(0, 12);
       current.score += scoreItem(item) * 0.45;
+
+      // 优先保留更像百度榜单的短标题
+      if (item.title.length < current.title.length && !isGenericOrInvalidTitle(item.title, item)) {
+        current.title = item.title;
+      }
 
       if (!current.summary && item.summary) current.summary = item.summary;
       if (!current.url && item.url) current.url = item.url;
@@ -1130,7 +1315,7 @@ function mergeItems(items) {
     .map((item) => ({
       ...item,
       score: Math.round(item.score),
-      sources: uniqBy(item.sources, (s) => `${s.id}:${s.rank}:${s.url}`).slice(0, 5)
+      sources: uniqBy(item.sources, (s) => `${s.id}:${s.rank}:${normalizeKey(s.title || '')}:${s.url}`).slice(0, 5)
     }))
     .sort((a, b) => b.score - a.score)
     .slice(0, config.maxItemsPerPlatform || 80);
