@@ -9,7 +9,7 @@ const OUT_PATH = path.join(OUT_DIR, 'worldcup.json');
 const FALLBACK_PATH = path.join(ROOT, 'config', 'fallback-sample.json');
 
 const USER_AGENT =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36 WorldCupTopicRadar/2.2';
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36 WorldCupTopicRadar/2.3';
 
 const FETCH_TIMEOUT = Number(process.env.FETCH_TIMEOUT || 10000);
 const MAX_CONCURRENCY = Number(process.env.MAX_CONCURRENCY || 5);
@@ -351,13 +351,11 @@ function compactTopicTitle(input = '', source = {}) {
     title = title.replaceAll(phrase, '');
   }
 
-  // “看美加墨世界杯故事 一起听黄健翔深刻解读” → “黄健翔解读美加墨世界杯”
   let m = title.match(/看(.{0,24}世界杯.{0,12})故事.*?听(.{2,8})深刻解读/);
   if (m) {
     title = `${m[2]}解读${m[1]}`;
   }
 
-  // “《黄健翔谈“美加墨”》宣传片：看世界杯故事 听黄健翔深刻解读” → “黄健翔谈美加墨”
   m = title.match(/《([^》]{2,40})》/);
   if (m && /黄健翔|世界杯|美加墨|FIFA|国足|世预赛/.test(m[1])) {
     title = m[1];
@@ -383,13 +381,11 @@ function isGenericOrInvalidTitle(title = '', source = {}) {
     if (pattern.test(t)) return true;
   }
 
-  // 关键词堆砌：荷兰队,巴西队,2026,世界杯,德国队
   const commaParts = t.split(/[，,、\s]+/).filter(Boolean);
   if (commaParts.length >= 4 && !includesAny(t, ACTION_TERMS)) {
     return true;
   }
 
-  // 只有平台/频道/页面信息，没有具体事件
   if (
     /首页|专题页|视频首页|搜索|榜单|热榜|专区|频道|空间/.test(t) &&
     !includesAny(t, ACTION_TERMS) &&
@@ -398,7 +394,6 @@ function isGenericOrInvalidTitle(title = '', source = {}) {
     return true;
   }
 
-  // 过短且只有世界杯大词，不适合作为运营话题
   if (
     normalized.length <= 10 &&
     (normalized.includes('世界杯') || normalized.includes('2026世界杯')) &&
@@ -413,7 +408,6 @@ function isGenericOrInvalidTitle(title = '', source = {}) {
 function getTopicMergeKey(item) {
   const title = compactTopicTitle(item.title || '', item);
 
-  // 针对当前已经出现的重复包装做强合并
   if (/黄健翔/.test(title) && /美加墨|世界杯/.test(title)) {
     return '黄健翔-美加墨世界杯-解读';
   }
@@ -491,14 +485,12 @@ function makeItem(raw, source, platform, index = 0) {
 
   if (!title || title.length < 2) return null;
 
-  // 百度官方接口本身就是干净榜单，少干预；其他平台强过滤无效标题
   if (!isBaiduOfficial && isGenericOrInvalidTitle(title, source)) {
     return null;
   }
 
   const combined = `${title} ${summary} ${source.name || ''}`;
 
-  // 百度官方世界杯大数据接口内的标题，不强制要求标题本身含世界杯
   if (!isBaiduOfficial && !isWorldCupRelated(combined)) {
     return null;
   }
@@ -936,6 +928,111 @@ async function fetchNewsHotTopics(source, platform) {
     .filter(Boolean);
 }
 
+async function fetchTopHubFallbackForEmptyPlatforms(emptyPlatforms) {
+  const apiKey = process.env.TOPHUB_API_KEY;
+
+  if (!apiKey || emptyPlatforms.length === 0) {
+    return [];
+  }
+
+  const queries = ['世界杯', '美加墨', '世预赛', '国足'];
+  const all = [];
+
+  for (const q of queries) {
+    try {
+      const url = `https://api.tophubdata.com/search?q=${encodeURIComponent(q)}&p=1`;
+
+      const text = await fetchText(url, {
+        referer: 'https://api.tophubdata.com/',
+        accept: 'application/json,text/plain,*/*',
+        headers: {
+          Authorization: apiKey
+        }
+      });
+
+      const json = JSON.parse(text);
+      const rows = flattenUnknownJson(json);
+      all.push(...rows);
+    } catch (error) {
+      console.warn(`TopHubData fallback failed for ${q}: ${error.message}`);
+    }
+
+    await sleep(120);
+  }
+
+  const items = [];
+
+  for (const row of all) {
+    const title =
+      row.title ||
+      row.name ||
+      row.word ||
+      row.query ||
+      row.desc ||
+      row.keyword ||
+      row.content ||
+      row.text ||
+      '';
+
+    const sourceText = `${row.source || row.sourceName || row.platform || row.platformName || row.node || row.nodeName || row.url || row.link || ''}`;
+    const summary = row.summary || row.description || row.desc || sourceText;
+
+    for (const platform of emptyPlatforms) {
+      const matched =
+        sourceText.includes(platform.name) ||
+        sourceText.toLowerCase().includes(platform.id.toLowerCase()) ||
+        matchPlatformAlias(sourceText, platform.id);
+
+      if (!matched) continue;
+
+      const source = {
+        id: `tophub-fallback-${platform.id}`,
+        name: `TopHubData ${platform.name}兜底`,
+        type: 'tophubFallback',
+        weight: 88
+      };
+
+      const item = makeItem(
+        {
+          title,
+          summary,
+          url: row.url || row.link || '',
+          hot: row.hot || row.heat || row.score || row.num || 0,
+          rank: row.rank || row.index || 99
+        },
+        source,
+        platform,
+        items.length
+      );
+
+      if (item) {
+        items.push(item);
+      }
+    }
+  }
+
+  return items;
+}
+
+function matchPlatformAlias(text, platformId) {
+  const t = String(text || '').toLowerCase();
+
+  const aliases = {
+    weibo: ['微博', 'weibo'],
+    baidu: ['百度', 'baidu'],
+    bilibili: ['b站', '哔哩哔哩', 'bilibili', 'bili'],
+    zhihu: ['知乎', 'zhihu'],
+    douyin: ['抖音', 'douyin'],
+    hupu: ['虎扑', 'hupu'],
+    dongqiudi: ['懂球帝', 'dongqiudi'],
+    xiaohongshu: ['小红书', 'xiaohongshu', 'xhs'],
+    migu: ['咪咕', 'miguvideo', 'migu'],
+    netease: ['网易', '163', 'netease']
+  };
+
+  return (aliases[platformId] || []).some((alias) => t.includes(alias.toLowerCase()));
+}
+
 function flattenUnknownJson(json) {
   const out = [];
 
@@ -968,7 +1065,9 @@ function flattenUnknownJson(json) {
 
       const nextContext = {
         platform: value.platform || value.platformName || context.platform,
-        source: value.source || value.sourceName || context.source
+        source: value.source || value.sourceName || context.source,
+        node: value.node || value.nodeName || context.node,
+        url: value.url || value.link || context.url
       };
 
       for (const key of Object.keys(value)) {
@@ -1301,7 +1400,6 @@ function mergeItems(items) {
       current.tags = uniq([...current.tags, ...item.tags]).slice(0, 12);
       current.score += scoreItem(item) * 0.45;
 
-      // 优先保留更像百度榜单的短标题
       if (item.title.length < current.title.length && !isGenericOrInvalidTitle(item.title, item)) {
         current.title = item.title;
       }
@@ -1337,12 +1435,34 @@ async function run() {
     return fetchSource(source, platform);
   });
 
-  const platforms = [];
+  const initialPlatformItems = new Map();
 
   for (const platform of PLATFORMS) {
     const relatedResults = results.filter((r) => r.platformId === platform.id);
     const rawItems = flatten(relatedResults.map((r) => r.items));
+    initialPlatformItems.set(platform.id, rawItems);
+  }
+
+  const emptyPlatforms = PLATFORMS.filter((platform) => {
+    const items = initialPlatformItems.get(platform.id) || [];
+    return items.length === 0;
+  });
+
+  const topHubFallbackItems = await fetchTopHubFallbackForEmptyPlatforms(emptyPlatforms);
+
+  for (const item of topHubFallbackItems) {
+    const list = initialPlatformItems.get(item.platformId) || [];
+    list.push(item);
+    initialPlatformItems.set(item.platformId, list);
+  }
+
+  const platforms = [];
+
+  for (const platform of PLATFORMS) {
+    const relatedResults = results.filter((r) => r.platformId === platform.id);
+    const rawItems = initialPlatformItems.get(platform.id) || [];
     const merged = mergeItems(rawItems);
+    const fallbackForThisPlatform = topHubFallbackItems.filter((item) => item.platformId === platform.id);
 
     platforms.push({
       id: platform.id,
@@ -1350,11 +1470,26 @@ async function run() {
       emoji: platform.emoji,
       color: platform.color,
       count: merged.length,
-      sourceCount: relatedResults.length,
-      availableSourceCount: relatedResults.filter((r) => r.ok).length,
+      sourceCount: relatedResults.length + (fallbackForThisPlatform.length > 0 ? 1 : 0),
+      availableSourceCount:
+        relatedResults.filter((r) => r.ok).length + (fallbackForThisPlatform.length > 0 ? 1 : 0),
       rawMatchedCount: rawItems.length,
       items: merged,
-      sources: relatedResults.map(({ items, ...r }) => r)
+      sources: [
+        ...relatedResults.map(({ items, ...r }) => r),
+        ...(fallbackForThisPlatform.length > 0
+          ? [
+              {
+                ok: true,
+                sourceId: `tophub-fallback-${platform.id}`,
+                sourceName: `TopHubData ${platform.name}兜底`,
+                platformId: platform.id,
+                total: fallbackForThisPlatform.length,
+                matched: fallbackForThisPlatform.length
+              }
+            ]
+          : [])
+      ]
     });
   }
 
@@ -1373,8 +1508,11 @@ async function run() {
       okSources: results.filter((r) => r.ok).length,
       failedSources: results.filter((r) => !r.ok).length,
       candidateItems: results.reduce((sum, r) => sum + r.total, 0),
-      matchedItems: results.reduce((sum, r) => sum + r.matched, 0),
-      finalItems: totalItems
+      matchedItems:
+        results.reduce((sum, r) => sum + r.matched, 0) + topHubFallbackItems.length,
+      finalItems: totalItems,
+      emptyPlatformsBeforeTopHub: emptyPlatforms.map((p) => p.name),
+      topHubFallbackItems: topHubFallbackItems.length
     },
     platforms,
     diagnostics: results
@@ -1412,6 +1550,7 @@ async function run() {
 
   console.log(`World Cup topic data updated: ${OUT_PATH}`);
   console.log(`Sources ok: ${payload.sourceSummary.okSources}/${payload.sourceSummary.totalSources}; final items: ${payload.sourceSummary.finalItems}`);
+  console.log(`TopHubData fallback items: ${topHubFallbackItems.length}`);
 
   for (const p of platforms) {
     console.log(`${p.name}: ${p.count} items, ${p.availableSourceCount}/${p.sourceCount} sources ok`);
